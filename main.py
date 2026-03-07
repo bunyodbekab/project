@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import json
 import os
 import gpiod
@@ -20,18 +20,23 @@ CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 
 DEFAULT_CONFIG = {
     "services": {
-        "KO'PIK":   {"display_name": "KO'PIK",   "price_per_sec": 200, "duration": 60,  "gpio_out": 227},
-        "SUV":      {"display_name": "SUV",       "price_per_sec": 150, "duration": 100, "gpio_out": 75},
-        "SHAMPUN":  {"display_name": "SHAMPUN",   "price_per_sec": 250, "duration": 80,  "gpio_out": 79},
-        "VOSK":     {"display_name": "VOSK",      "price_per_sec": 350, "duration": 70,  "gpio_out": 78},
-        "PENA":     {"display_name": "PENA",      "price_per_sec": 300, "duration": 50,  "gpio_out": 71},
-        "OSMOS":    {"display_name": "OSMOS",     "price_per_sec": 200, "duration": 90,  "gpio_out": 233},
-        "QURITISH": {"display_name": "QURITISH",  "price_per_sec": 100, "duration": 120, "gpio_out": 74},
+        "KO'PIK":   {"display_name": "KO'PIK",   "price_per_sec": 200, "duration": 60,  "relay_bit": 0},
+        "SUV":      {"display_name": "SUV",       "price_per_sec": 150, "duration": 100, "relay_bit": 1},
+        "SHAMPUN":  {"display_name": "SHAMPUN",   "price_per_sec": 250, "duration": 80,  "relay_bit": 2},
+        "VOSK":     {"display_name": "VOSK",      "price_per_sec": 350, "duration": 70,  "relay_bit": 3},
+        "PENA":     {"display_name": "PENA",      "price_per_sec": 300, "duration": 50,  "relay_bit": 4},
+        "OSMOS":    {"display_name": "OSMOS",     "price_per_sec": 200, "duration": 90,  "relay_bit": 5},
+        "QURITISH": {"display_name": "QURITISH",  "price_per_sec": 100, "duration": 120, "relay_bit": 6},
     },
     "moyka_name": "MOYKA",
     "admin_pin":  "1234",
     "total_earned": 0,
-    "sessions": []
+    "sessions": [],
+    "shift_register": {
+        "data_pin": 227,   # SN74HC595N DS (14-pin)
+        "clock_pin": 75,   # SN74HC595N SHCP (11-pin)  
+        "latch_pin": 79    # SN74HC595N STCP (12-pin)
+    }
 }
 
 INPUT_GPIO_TO_SERVICE = {
@@ -58,6 +63,10 @@ def load_config():
             for key, val in DEFAULT_CONFIG.items():
                 if key not in data:
                     data[key] = val
+            # Shift register config
+            if "shift_register" not in data:
+                data["shift_register"] = DEFAULT_CONFIG["shift_register"]
+            # Services
             for svc_name, svc_default in DEFAULT_CONFIG["services"].items():
                 if svc_name not in data["services"]:
                     data["services"][svc_name] = dict(svc_default)
@@ -80,22 +89,49 @@ def save_config(cfg):
 
 
 # ?????????????????????????????????????????????
-# GPIO
+# GPIO - Shift Register (SN74HC595N) bilan
 # ?????????????????????????????????????????????
 class GPIOController:
-    def __init__(self, out_pin_map):
+    def __init__(self, relay_map, shift_config):
+        """
+        relay_map: {service_name: bit_position} (0-7)
+        shift_config: {"data_pin": X, "clock_pin": Y, "latch_pin": Z}
+        """
         self.chip = None
-        self.out_lines = {}
-        self.in_lines  = {}
+        self.relay_map = relay_map  # {service_name: bit_position}
+        self.relay_state = 0  # 8-bit holatni saqlash (0-255)
+        
+        # Shift register pinlari
+        self.data_line = None
+        self.clock_line = None
+        self.latch_line = None
+        
+        # Input pinlari
+        self.in_lines = {}
+        
         try:
             self.chip = gpiod.Chip(CHIP_NAME)
-            for name, pin in out_pin_map.items():
-                try:
-                    line = self.chip.get_line(pin)
-                    line.request(consumer="moyka_out", type=gpiod.LINE_REQ_DIR_OUT, default_vals=[0])
-                    self.out_lines[name] = line
-                except Exception as e:
-                    print(f"Out GPIO [{name}={pin}]: {e}")
+            
+            # Shift register pinlarini sozlash
+            data_pin = shift_config.get("data_pin", 227)
+            clock_pin = shift_config.get("clock_pin", 75)
+            latch_pin = shift_config.get("latch_pin", 79)
+            
+            try:
+                self.data_line = self.chip.get_line(data_pin)
+                self.data_line.request(consumer="sr_data", type=gpiod.LINE_REQ_DIR_OUT, default_vals=[0])
+                
+                self.clock_line = self.chip.get_line(clock_pin)
+                self.clock_line.request(consumer="sr_clock", type=gpiod.LINE_REQ_DIR_OUT, default_vals=[0])
+                
+                self.latch_line = self.chip.get_line(latch_pin)
+                self.latch_line.request(consumer="sr_latch", type=gpiod.LINE_REQ_DIR_OUT, default_vals=[0])
+                
+                print(f"Shift Register: DATA={data_pin}, CLOCK={clock_pin}, LATCH={latch_pin}")
+            except Exception as e:
+                print(f"Shift register GPIO xatosi: {e}")
+            
+            # Input pinlarini sozlash
             for gpio_line in INPUT_GPIO_TO_SERVICE:
                 try:
                     line = self.chip.get_line(gpio_line)
@@ -103,19 +139,70 @@ class GPIOController:
                     self.in_lines[gpio_line] = line
                 except Exception as e:
                     print(f"In GPIO [line={gpio_line}]: {e}")
-            print("GPIO tayyor.")
+            
+            # Barcha relelarni o'chirish
+            self.shift_out(0)
+            print("GPIO tayyor (Shift Register rejimida).")
         except Exception as e:
-            print(f"GPIO chip xatosi (sim): {e}")
+            print(f"GPIO chip xatosi: {e}")
             self.chip = None
 
+    def shift_out(self, data_byte):
+        """
+        8-bitli ma'lumotni SN74HC595N ga yuborish
+        data_byte: 0-255 orasidagi qiymat
+        """
+        if not all([self.data_line, self.clock_line, self.latch_line]):
+            print(f"[SIM] Shift out: {data_byte:08b}")
+            return
+        
+        try:
+            # Latch ni pastga tushirish (ma'lumot qabul qilish rejimi)
+            self.latch_line.set_value(0)
+            
+            # 8 bitni yuqoridan boshlab yuborish (MSB first)
+            for i in range(7, -1, -1):
+                bit = (data_byte >> i) & 1
+                
+                # Clock ni pastga
+                self.clock_line.set_value(0)
+                
+                # Data ni o'rnatish
+                self.data_line.set_value(bit)
+                
+                # Clock ni yuqoriga (bit qabul qilinadi)
+                self.clock_line.set_value(1)
+            
+            # Clock ni pastga
+            self.clock_line.set_value(0)
+            
+            # Latch ni yuqoriga (chiqishga uzatish)
+            self.latch_line.set_value(1)
+            
+        except Exception as e:
+            print(f"Shift out xatosi: {e}")
+
     def set_pin(self, name, value):
-        if name in self.out_lines:
-            try:
-                self.out_lines[name].set_value(int(value))
-            except Exception as e:
-                print(f"GPIO set [{name}]: {e}")
-        else:
+        """
+        Bitta releni yoqish/o'chirish
+        name: servis nomi
+        value: 1 (yoqish) yoki 0 (o'chirish)
+        """
+        if name not in self.relay_map:
             print(f"[SIM] {name} -> {value}")
+            return
+        
+        bit_pos = self.relay_map[name]
+        
+        if value:
+            # Bitni 1 ga o'rnatish (yoqish)
+            self.relay_state |= (1 << bit_pos)
+        else:
+            # Bitni 0 ga o'rnatish (o'chirish)
+            self.relay_state &= ~(1 << bit_pos)
+        
+        # Yangi holatni yuborish
+        self.shift_out(self.relay_state)
 
     def read_input(self, gpio_line):
         if gpio_line in self.in_lines:
@@ -126,8 +213,9 @@ class GPIOController:
         return 0
 
     def all_off(self):
-        for name in list(self.out_lines.keys()):
-            self.set_pin(name, 0)
+        """Barcha relelarni o'chirish"""
+        self.relay_state = 0
+        self.shift_out(0)
 
     def cleanup(self):
         self.all_off()
@@ -707,8 +795,15 @@ class MoykaUI(QWidget):
         self.setFixedSize(width, height)
 
         self.cfg = load_config()
-        out_pins = {n: d["gpio_out"] for n, d in self.cfg["services"].items()}
-        self.gpio = GPIOController(out_pins)
+        
+        # Shift register uchun relay_map yaratish
+        relay_map = {n: d["relay_bit"] for n, d in self.cfg["services"].items()}
+        shift_config = self.cfg.get("shift_register", {
+            "data_pin": 227,
+            "clock_pin": 75,
+            "latch_pin": 79
+        })
+        self.gpio = GPIOController(relay_map, shift_config)
 
         self.balance          = 0
         self.remaining_sec    = 0
