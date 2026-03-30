@@ -1,0 +1,104 @@
+{
+  "services": {
+    "KO'PIK": {
+      "display_name": "KO'PIK",
+      "price_per_sec": 200,
+      "duration": 60,
+      "relay_bit": 0
+    },
+    "SUV": {
+      "display_name": "SUV",
+      "price_per_sec": 150,
+      "duration": 100,
+      "relay_bit": 1
+    },
+    "SHAMPUN": {
+      "display_name": "SHAMPUN",
+      "price_per_sec": 250,
+      "duration": 80,
+      "relay_bit": 2
+    },
+    "VOSK": {
+      "display_name": "VOSK",
+      "price_per_sec": 350,
+      "duration": 70,
+      "relay_bit": 3
+    },
+    "PENA": {
+      "display_name": "PENA",
+      "price_per_sec": 300,
+      "duration": 50,
+      "relay_bit": 4
+    },
+    "OSMOS": {
+      "display_name": "OSMOS",
+      "price_per_sec": 200,
+      "duration": 90,
+      "relay_bit": 5
+    },
+    "QURITISH": {
+      "display_name": "QURITISH",
+      "price_per_sec": 100,
+      "duration": 120,
+      "relay_bit": 6
+    }
+  },
+  "moyka_name": "MOYKA",
+  "admin_pin": "1234",
+  "total_earned": 39950,
+  "sessions": [
+    {
+      "service": "OSMOS",
+      "service_name": "OSMOS",
+      "earned": 200,
+      "date": "2026-03-29 23:12:44"
+    },
+    {
+      "service": "OSMOS",
+      "service_name": "OSMOS",
+      "earned": 200,
+      "date": "2026-03-30 00:06:46"
+    },
+    {
+      "service": "SHAMPUN",
+      "service_name": "SHAMPUN",
+      "earned": 250,
+      "date": "2026-03-30 00:58:08"
+    },
+    {
+      "service": "SHAMPUN",
+      "service_name": "SHAMPUN",
+      "earned": 38000,
+      "date": "2026-03-30 01:00:51"
+    },
+    {
+      "service": "OSMOS",
+      "service_name": "OSMOS",
+      "earned": 200,
+      "date": "2026-03-30 01:01:24"
+    },
+    {
+      "service": "SHAMPUN",
+      "service_name": "SHAMPUN",
+      "earned": 500,
+      "date": "2026-03-30 01:16:14"
+    },
+    {
+      "service": "SUV",
+      "service_name": "SUV",
+      "earned": 150,
+      "date": "2026-03-30 01:20:18"
+    },
+    {
+      "service": "SUV",
+      "service_name": "SUV",
+      "earned": 450,
+      "date": "2026-03-30 01:22:27"
+    }
+  ],
+  "shift_register": {
+    "data_pin": 227,
+    "clock_pin": 75,
+    "latch_pin": 79
+  }
+}

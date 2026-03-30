@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Moyka Panel</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+</head>
+<body>
+  <div id="viewport">
+    <div id="rotator">
+      <div id="app">
+        <section id="topPanel" class="top-panel">
+          <div id="headerTitle" class="header-title"></div>
+          <div id="headerMain" class="header-main"></div>
+        </section>
+
+        <div class="divider"></div>
+
+        <section class="controls-wrap">
+          <div id="serviceGrid" class="service-grid"></div>
+
+          <button id="pauseButton" class="pause-button" type="button">
+            <img id="pauseIconLeft" class="stop-mark-img" alt="stop" />
+            <span class="pause-text">PAUZA</span>
+            <img id="pauseIconRight" class="stop-mark-img" alt="stop" />
+          </button>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
