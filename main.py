@@ -30,10 +30,21 @@ def _ensure_venv_runtime():
     return result.returncode
 
 
+def _enable_remote_debugging():
+    """Expose QtWebEngine remote debugging so Chrome devtools can attach."""
+    port = os.environ.get("QTWEBENGINE_REMOTE_DEBUGGING")
+    if not port:
+        port = os.environ.get("WEBENGINE_REMOTE_DEBUG_PORT", "9222")
+        os.environ["QTWEBENGINE_REMOTE_DEBUGGING"] = port
+    print(f"[WEBENGINE] Remote debugging: http://127.0.0.1:{port}")
+
+
 def main():
     delegated = _ensure_venv_runtime()
     if delegated is not None:
         return delegated
+
+    _enable_remote_debugging()
 
     from PyQt5.QtWidgets import QApplication
 

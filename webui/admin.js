@@ -186,6 +186,13 @@ function setupEventListeners() {
     document.getElementById('adminPin').value = kbdInput;
     updateKeyboardDisplay();
   });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && (e.key === 'r' || e.key === 'R')) {
+      e.preventDefault();
+      window.location.reload();
+    }
+  });
 }
 
 function setupVirtualKeyboard() {
@@ -299,8 +306,11 @@ function saveSettings() {
   
   const status = document.getElementById('adminStatus');
   status.textContent = 'Saqlandi! ✓';
+  status.style.backgroundColor = 'green';
+  status.style.visibility = 'visible';
   setTimeout(() => {
     status.textContent = '';
+    status.style.visibility = 'hidden';
   }, 2000);
 }
 

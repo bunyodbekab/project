@@ -291,6 +291,11 @@ function initActions() {
   pauseButton.addEventListener("touchcancel", stopPausePress, { passive: true });
 
   document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey && (e.key === "r" || e.key === "R")) {
+      e.preventDefault();
+      window.location.reload();
+      return;
+    }
     if (e.key === "Enter" || e.key === "NumpadEnter") {
       if (backend && latestState && latestState.canAddMoney && typeof backend.addMoney === "function") {
         backend.addMoney();
