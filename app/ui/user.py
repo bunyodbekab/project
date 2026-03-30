@@ -1,16 +1,17 @@
 import json
+import math
 import os
 from datetime import datetime
 
-from PyQt5.QtCore import QObject, QTimer, QUrl, Qt, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QObject, QTimer, QUrl, Qt, pyqtSignal, pyqtSlot, QRectF
 from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtWebEngineWidgets import QWebEngineView
-from PyQt5.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget, QGraphicsView, QGraphicsScene, QFrame
+from PyQt5.QtGui import QTransform
 
 from app.gpio_controller import GPIOController
 from app.settings import BASE_DIR, BLINK_WARN, ICONS_DIR, INPUT_GPIO_TO_SERVICE, LOW_BALANCE
 from app.storage import load_config, save_config
-from app.ui.admin import AdminPanel, PinOverlay
 
 
 class WebBridge(QObject):
@@ -40,6 +41,53 @@ class WebBridge(QObject):
     def stopReleased(self):
         self.ui._on_stop_released("web")
 
+    @pyqtSlot("QVariant")
+    def updateFrontSettings(self, settings):
+        self.ui.update_front_settings(settings)
+
+
+class RotatedContainer(QGraphicsView):
+    def __init__(self, inner_widget, angle_deg, parent=None, fallback_size=None):
+        super().__init__(parent)
+        self._inner = inner_widget
+        self._angle = angle_deg
+        self._fallback_size = fallback_size or (0, 0)
+
+        self.setStyleSheet("background: transparent; border: none;")
+        self.setFrameShape(QFrame.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setAlignment(Qt.AlignCenter)
+
+        self._scene = QGraphicsScene(self)
+        self._proxy = self._scene.addWidget(inner_widget)
+        self._proxy.setTransform(QTransform().rotate(self._angle))
+        self._scene.addItem(self._proxy)
+        self.setScene(self._scene)
+
+        # keep scaling stable; rotate only
+        self.setTransformationAnchor(QGraphicsView.AnchorViewCenter)
+        self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
+        self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate)
+
+        self._update_scene_rect(force_fallback=True)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_scene_rect()
+
+    def _update_scene_rect(self, force_fallback=False):
+        rect = self._proxy.boundingRect()
+        if force_fallback or rect.width() <= 1 or rect.height() <= 1:
+            fw, fh = self._fallback_size
+            if fw and fh:
+                rect = QRectF(0, 0, fw, fh)
+            else:
+                vp = self.viewport().rect()
+                rect = QRectF(0, 0, max(1, vp.width()), max(1, vp.height()))
+        self._scene.setSceneRect(rect)
+        self.centerOn(rect.center())
+
 
 class MoykaUI(QWidget):
     def __init__(self, width, height):
@@ -54,9 +102,20 @@ class MoykaUI(QWidget):
         shift_cfg = self.cfg.get("shift_register", {"data_pin": 227, "clock_pin": 75, "latch_pin": 79})
         self.gpio = GPIOController(relay_map, shift_cfg)
 
+        self.front_settings = None
+        self.front_services = []
+        self.front_key_to_hw = {}
+        self.hw_to_front = {}
+        self.price_per_sec = {}
+        self.pause_free_default = 0
+        self.pause_paid_rate = 1
+        self.pause_free_left = 0
+        self.pause_stage = "off"
+
         self.balance = 0
         self.remaining_sec = 0
         self.active_service = None
+        self.active_front_key = None
         self.is_running = False
         self.pause_mode = False
         self.show_timer_mode = False
@@ -85,8 +144,6 @@ class MoykaUI(QWidget):
         self._prev_input = {line: 0 for line in INPUT_GPIO_TO_SERVICE}
         self.input_timer.start()
 
-        self.visible_slots = self._build_service_slots()
-
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
@@ -98,6 +155,7 @@ class MoykaUI(QWidget):
         web_layout = QVBoxLayout(self._web_page)
         web_layout.setContentsMargins(0, 0, 0, 0)
         web_layout.setSpacing(0)
+        self._web_page.setFixedSize(self.w, self.h)
 
         self.web_view = QWebEngineView(self._web_page)
         self.web_view.setContextMenuPolicy(Qt.NoContextMenu)
@@ -108,13 +166,159 @@ class MoykaUI(QWidget):
         self.channel.registerObject("backend", self.bridge)
         self.web_view.page().setWebChannel(self.channel)
 
+        # WebEngineView cannot be embedded in QGraphicsScene reliably; keep it unrotated here
         self._stack.addWidget(self._web_page)
-        self._admin_panel = None
-        self._pin_overlay = None
 
         html_path = os.path.join(BASE_DIR, "webui", "index.html")
         self.web_view.loadFinished.connect(self._on_web_loaded)
         self.web_view.setUrl(QUrl.fromLocalFile(html_path))
+
+        self._rebuild_front_services()
+
+    def _normalize_front_settings(self, raw):
+        if not isinstance(raw, dict):
+            return None
+
+        services = raw.get("services") or []
+        norm_services = []
+        for idx, svc in enumerate(services):
+            seconds = int(svc.get("secondsPer5000") or svc.get("seconds_per_5000") or 60)
+            seconds = max(1, seconds)
+            norm_services.append(
+                {
+                    "key": svc.get("key") or f"service-{idx+1}",
+                    "label": svc.get("label") or svc.get("display_name") or svc.get("name") or svc.get("key") or f"Tugma {idx+1}",
+                    "theme": svc.get("theme") or "suv",
+                    "icon": svc.get("icon") or "",
+                    "iconUrl": svc.get("iconUrl") or "",
+                    "showIcon": svc.get("showIcon", True),
+                    "active": svc.get("active", True),
+                    "secondsPer5000": seconds,
+                }
+            )
+
+        pause_cfg = raw.get("pause") or {}
+        free_sec = max(
+            0,
+            int(
+                pause_cfg.get("freeSeconds")
+                or raw.get("freePause")
+                or raw.get("free_pause")
+                or 0
+            ),
+        )
+        paid_sec = max(
+            1,
+            int(
+                pause_cfg.get("paidSecondsPer5000")
+                or raw.get("paidPause")
+                or raw.get("paid_pause")
+                or 60
+            ),
+        )
+
+        total_buttons = 7
+
+        show_icons = raw.get("showIcons")
+        if show_icons is None:
+            show_icons = raw.get("show_icons", True)
+
+        return {
+            "pin": str(raw.get("pin") or self.cfg.get("admin_pin", "1234")),
+            "totalButtons": int(total_buttons),
+            "showIcons": bool(show_icons),
+            "pause": {"freeSeconds": free_sec, "paidSecondsPer5000": paid_sec},
+            "services": norm_services,
+        }
+
+    def _apply_pause_settings(self):
+        if self.front_settings:
+            pause_cfg = self.front_settings.get("pause", {})
+            self.pause_free_default = max(0, int(pause_cfg.get("freeSeconds", 0)))
+            paid_sec = max(1, int(pause_cfg.get("paidSecondsPer5000", 60)))
+            self.pause_paid_rate = max(1, math.ceil(5000 / paid_sec))
+        else:
+            self.pause_free_default = 0
+            self.pause_paid_rate = 1
+
+    def _rebuild_front_services(self):
+        services = []
+        price_map = {}
+        fk_to_hw = {}
+        hw_to_fk = {}
+
+        if self.front_settings:
+            raw = self.front_settings.get("services", [])
+            total = max(1, self.front_settings.get("totalButtons") or len(raw) or 1)
+            used = set()
+            for svc in raw:
+                if not svc.get("active", True):
+                    continue
+                if len(services) >= total:
+                    break
+                hw_key = self._map_to_hw_service(svc, used)
+                front_key = svc.get("key")
+                price_map[front_key] = max(1, math.ceil(5000 / max(1, svc.get("secondsPer5000", 60))))
+                services.append(
+                    {
+                        "front_key": front_key,
+                        "label": svc.get("label") or front_key,
+                        "theme": svc.get("theme") or "suv",
+                        "icon_file": svc.get("icon") or "",
+                        "icon_url": svc.get("iconUrl") or "",
+                        "hw_key": hw_key,
+                    }
+                )
+                fk_to_hw[front_key] = hw_key
+                if hw_key:
+                    hw_to_fk[hw_key] = front_key
+        else:
+            legacy_slots = self._build_service_slots()
+            for slot in legacy_slots:
+                key = slot["service_key"]
+                svc_cfg = self.cfg["services"].get(key, {})
+                price_map[key] = max(1, int(svc_cfg.get("price_per_sec", 1)))
+                services.append(
+                    {
+                        "front_key": key,
+                        "label": slot["label"],
+                        "theme": slot["theme"],
+                        "icon_file": slot.get("icon_file", ""),
+                        "icon_url": "",
+                        "hw_key": key,
+                    }
+                )
+                fk_to_hw[key] = key
+                hw_to_fk[key] = key
+
+        self.front_services = services
+        self.price_per_sec = price_map
+        self.front_key_to_hw = fk_to_hw
+        self.hw_to_front = hw_to_fk
+        self._apply_pause_settings()
+
+    def _map_to_hw_service(self, svc, used):
+        aliases = []
+        if svc.get("label"):
+            aliases.append(svc["label"])
+        if svc.get("key"):
+            aliases.append(svc["key"])
+        picked = self._pick_service_for_aliases(aliases, used)
+        if picked:
+            used.add(picked)
+            return picked
+        return None
+
+    def update_front_settings(self, settings):
+        norm = self._normalize_front_settings(settings)
+        if not norm:
+            return
+        self.front_settings = norm
+        # sync PIN to backend config for admin overlay
+        self.cfg["admin_pin"] = norm.get("pin", self.cfg.get("admin_pin", "1234"))
+        save_config(self.cfg)
+        self._rebuild_front_services()
+        self._emit_state()
 
     def _on_web_loaded(self, ok):
         if not ok:
@@ -174,37 +378,37 @@ class MoykaUI(QWidget):
             {
                 "label": "SUV",
                 "theme": "suv",
-                "icon_file": "🌊.png",
+                "icon_file": "suv.png",
                 "aliases": ["SUV"],
             },
             {
                 "label": "OSMOS",
                 "theme": "osmos",
-                "icon_file": "💧.png",
+                "icon_file": "osmos.png",
                 "aliases": ["OSMOS"],
             },
             {
                 "label": "AKTIV\nPENA",
                 "theme": "aktiv",
-                "icon_file": "🧪.png",
+                "icon_file": "aktiv.png",
                 "aliases": ["AKTIV PENA", "AKTIV", "KO'PIK", "KOPIK", "FOAM"],
             },
             {
                 "label": "PENA",
                 "theme": "pena",
-                "icon_file": "🫧.png",
+                "icon_file": "pena.png",
                 "aliases": ["PENA"],
             },
             {
                 "label": "NANO",
                 "theme": "nano",
-                "icon_file": "✨.png",
+                "icon_file": "nano.png",
                 "aliases": ["NANO", "SHAMPUN", "QURITISH"],
             },
             {
                 "label": "VOSK",
                 "theme": "vosk",
-                "icon_file": "🛡️.png",
+                "icon_file": "vosk.png",
                 "aliases": ["VOSK"],
             },
         ]
@@ -227,9 +431,9 @@ class MoykaUI(QWidget):
         return slots
 
     def _display_title_for_service(self, service_key):
-        for slot in self.visible_slots:
-            if slot["service_key"] == service_key:
-                return slot["label"].replace("\n", " ")
+        for slot in self.front_services:
+            if slot.get("hw_key") == service_key or slot.get("front_key") == service_key:
+                return str(slot.get("label", "")).replace("\n", " ")
         return self.cfg["services"].get(service_key, {}).get("display_name", service_key).upper()
 
     def _header_color(self, mode):
@@ -246,30 +450,45 @@ class MoykaUI(QWidget):
         title = ""
         main_text = ""
 
+        pause_state = {
+            "status": "off",
+            "remainingText": "",
+            "label": "",
+            "iconUrl": self._icon_url("\u26d4.png"),
+        }
+
         if self.pause_mode:
             mode = "pause"
-            title = "PAUZA"
-            main_text = "{:02d}:{:02d}".format(max(0, self.remaining_sec) // 60, max(0, self.remaining_sec) % 60)
+            remaining = max(0, self.remaining_sec)
+            pause_state["status"] = "free" if self.pause_stage == "free" else "paid"
+            pause_state["label"] = "TEKIN PAUZA" if self.pause_stage == "free" else "PAUZA"
+            pause_state["remainingText"] = "{:02d}:{:02d}".format(remaining // 60, remaining % 60)
+            title = pause_state["label"]
+            main_text = pause_state["remainingText"]
         elif self.show_timer_mode and self.is_running and self.active_service:
             mode = "running"
             title = self._display_title_for_service(self.active_service)
             main_text = "{:02d}:{:02d}".format(max(0, self.remaining_sec) // 60, max(0, self.remaining_sec) % 60)
         else:
-            balance_text = "{:,}".format(max(0, self.balance)).replace(",", " ")
-            main_text = "{}\nSO'M".format(balance_text)
+            balance_value = max(0, self.balance)
+            balance_text = "{:,}".format(balance_value).replace(",", " ")
+            if balance_value <= 0:
+                title = "XUSH KELIBSIZ"
+                main_text = self.cfg.get("moyka_name", "MOYKA")
+            else:
+                title = "BALANS"
+                main_text = "{}\nSO'M".format(balance_text)
 
         services = []
-        for slot in self.visible_slots:
-            key = slot["service_key"]
-            svc = self.cfg["services"].get(key)
-            if not svc:
+        for slot in self.front_services:
+            if not slot.get("front_key"):
                 continue
             services.append(
                 {
-                    "key": key,
+                    "key": slot["front_key"],
                     "label": slot["label"],
                     "theme": slot["theme"],
-                    "iconUrl": self._icon_url(slot["icon_file"]),
+                    "iconUrl": slot.get("icon_url") or self._icon_url(slot.get("icon_file")),
                 }
             )
 
@@ -279,9 +498,10 @@ class MoykaUI(QWidget):
             "mainText": main_text,
             "headerColor": self._header_color(mode),
             "balanceText": "{:,}".format(max(0, self.balance)).replace(",", " "),
-            "activeService": self.active_service or "",
+            "activeService": self.active_front_key or "",
             "services": services,
             "pauseIconUrl": self._icon_url("\u26d4.png"),
+            "pauseState": pause_state,
             "canAddMoney": mode == "idle",
         }
 
@@ -296,16 +516,21 @@ class MoykaUI(QWidget):
         self._emit_state()
         self._check_blink()
 
-    def button_clicked(self, name):
-        if name not in self.cfg["services"]:
+    def button_clicked(self, front_key):
+        front_key = front_key or ""
+        hw_key = self.front_key_to_hw.get(front_key, front_key)
+        price = self.price_per_sec.get(front_key)
+        if hw_key not in self.cfg["services"]:
             return
 
-        svc_data = self.cfg["services"][name]
-        cost = max(1, int(svc_data.get("price_per_sec", 0)))
+        cost = max(1, int(price or self.cfg["services"][hw_key].get("price_per_sec", 1)))
 
         if self.balance < cost:
             self._flash_low_balance()
             return
+
+        if self.pause_mode:
+            self._stop_pause()
 
         if self.is_running and self.active_service:
             self._deactivate_pin(self.active_service)
@@ -314,14 +539,17 @@ class MoykaUI(QWidget):
         self._pause_hold_count = 0
         self._stop_hold_source = None
 
-        self.active_service = name
+        self.active_service = hw_key
+        self.active_front_key = front_key
         self.pause_mode = False
-        self.remaining_sec = self.balance // cost
+        self.pause_stage = "off"
+        self.pause_free_left = 0
+        self.remaining_sec = math.ceil(self.balance / cost)
         self.is_running = True
         self.show_timer_mode = True
         self.session_earned = 0
 
-        self._activate_pin(name)
+        self._activate_pin(hw_key)
         self.service_timer.start()
         self._emit_state()
         self._check_blink()
@@ -339,35 +567,94 @@ class MoykaUI(QWidget):
         self._stop_hold_source = None
 
     def _tick(self):
+        if self.pause_mode:
+            self._tick_pause()
+            return
+
         if not self.is_running or not self.active_service:
             return
 
-        cost = max(1, int(self.cfg["services"][self.active_service].get("price_per_sec", 0)))
+        cost = max(1, int(self.price_per_sec.get(self.active_front_key) or self.cfg["services"][self.active_service].get("price_per_sec", 1)))
+
+        if self.balance <= 0:
+            self._stop_service()
+            return
+
         charge = min(cost, self.balance)
         self.balance -= charge
         self.session_earned += charge
-        self.remaining_sec -= 1
+        self.remaining_sec = math.ceil(self.balance / cost) if self.balance > 0 else 0
 
-        if self.balance <= 0 or self.remaining_sec <= 0:
+        if self.balance <= 0:
             self._stop_service()
             return
 
         self._emit_state()
         self._check_blink()
 
+    def _tick_pause(self):
+        if not self.pause_mode:
+            return
+
+        if self.pause_stage == "free" and self.pause_free_left > 0:
+            self.pause_free_left -= 1
+            self.remaining_sec = self.pause_free_left
+            if self.pause_free_left <= 0:
+                self.pause_stage = "paid"
+                self.remaining_sec = math.ceil(self.balance / self.pause_paid_rate) if self.balance > 0 else 0
+            self._emit_state()
+            return
+
+        cost = max(1, int(self.pause_paid_rate))
+        if self.balance <= 0:
+            self._stop_pause()
+            return
+
+        charge = min(cost, self.balance)
+        self.balance -= charge
+        self.session_earned += charge
+        self.remaining_sec = math.ceil(self.balance / cost) if self.balance > 0 else 0
+
+        if self.balance <= 0:
+            self._stop_pause()
+            return
+
+        self._emit_state()
+        self._check_blink()
+
+    def _stop_pause(self):
+        self.pause_mode = False
+        self.pause_stage = "off"
+        self.pause_free_left = 0
+        self.service_timer.stop()
+        if self.session_earned > 0:
+            self.cfg["total_earned"] = self.cfg.get("total_earned", 0) + self.session_earned
+            self.cfg.setdefault("sessions", []).append(
+                {
+                    "service": "PAUSE",
+                    "service_name": "PAUZA",
+                    "earned": self.session_earned,
+                    "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                }
+            )
+            save_config(self.cfg)
+        self.session_earned = 0
+        self._emit_state()
+        self._check_blink()
+
     def _pause_hold_tick(self):
         self._pause_hold_count += 1
-        if self._pause_hold_count >= 5:
+        if self._pause_hold_count >= 2:
             self._pause_hold_timer.stop()
             if self._stop_hold_source is not None and not self.is_running:
-                self._show_pin_overlay()
+                # PIN modal now handled by HTML/JS in index.html
                 self._stop_hold_source = None
                 self._pause_hold_count = 0
 
     def _stop_service(self, manual_pause=False):
         self.is_running = False
         self.show_timer_mode = manual_pause
-        self.pause_mode = manual_pause and self.balance > 0 and self.remaining_sec > 0
+        self.pause_mode = manual_pause and self.balance > 0
         self.service_timer.stop()
         self.blink_timer.stop()
         self.blink_state = False
@@ -388,13 +675,28 @@ class MoykaUI(QWidget):
         if self.active_service:
             self._deactivate_pin(self.active_service)
             self.active_service = None
+            self.active_front_key = None
 
-        self.session_earned = 0
+        if self.pause_mode:
+            self.pause_stage = "free" if self.pause_free_default > 0 else "paid"
+            self.pause_free_left = self.pause_free_default
+            if self.pause_stage == "free":
+                self.remaining_sec = self.pause_free_left
+            else:
+                self.remaining_sec = math.ceil(self.balance / self.pause_paid_rate) if self.balance > 0 else 0
+            self.session_earned = 0
+            self.service_timer.start()
+        else:
+            self.session_earned = 0
+            self.pause_stage = "off"
+            self.pause_free_left = 0
+            self.pause_mode = False
+
         self._emit_state()
         self._check_blink()
 
     def _check_blink(self):
-        should = self.balance < LOW_BALANCE or (self.is_running and self.remaining_sec <= BLINK_WARN)
+        should = self.balance < LOW_BALANCE or ((self.is_running or self.pause_mode) and self.remaining_sec <= BLINK_WARN)
         if should and not self.blink_timer.isActive():
             self.blink_timer.start()
             self._emit_state()
@@ -428,55 +730,35 @@ class MoykaUI(QWidget):
                 elif val == 0 and prev == 1:
                     self._on_stop_released("gpio")
             elif val == 1 and prev == 0:
-                self.button_clicked(svc_name)
+                front_key = self.hw_to_front.get(svc_name, svc_name)
+                self.button_clicked(front_key)
 
             self._prev_input[gpio_line] = val
 
-    def _show_pin_overlay(self):
-        if self._pin_overlay:
-            self._pin_overlay.deleteLater()
-        self._pin_overlay = PinOverlay(self.cfg.get("admin_pin", "1234"), self._web_page)
-        self._pin_overlay.setGeometry(0, 0, self.w, self.h)
-        self._pin_overlay.show()
-        self._pin_overlay.raise_()
-        self._pin_overlay.accepted.connect(self._open_admin_panel)
-        self._pin_overlay.rejected.connect(self._close_pin_overlay)
 
-    def _close_pin_overlay(self):
-        if self._pin_overlay:
-            self._pin_overlay.hide()
-            self._pin_overlay.deleteLater()
-            self._pin_overlay = None
 
-    def _build_admin_page(self):
-        if self._admin_panel:
-            self._stack.removeWidget(self._admin_panel)
-            self._admin_panel.deleteLater()
-        self._admin_panel = AdminPanel(self.cfg, self.w, self.h, self)
-        self._admin_panel.config_changed.connect(self._apply_config)
-        self._admin_panel.close_requested.connect(self._close_admin)
-        self._stack.addWidget(self._admin_panel)
+
 
     def _open_admin_panel(self):
-        self._close_pin_overlay()
-        self._build_admin_page()
-        self._stack.setCurrentIndex(1)
+        # Navigate WebView to admin page (loads admin.html)
+        admin_path = os.path.join(BASE_DIR, "webui", "admin.html")
+        self.web_view.setUrl(QUrl.fromLocalFile(admin_path))
 
-    def _close_admin(self):
-        self._stack.setCurrentIndex(0)
-        self._emit_state()
-
-    def _apply_config(self, new_cfg):
-        self.cfg = new_cfg
-        save_config(self.cfg)
-        self.visible_slots = self._build_service_slots()
+    def _return_to_main(self):
+        # Navigate WebView back to main page (index.html)
+        html_path = os.path.join(BASE_DIR, "webui", "index.html")
+        self.web_view.setUrl(QUrl.fromLocalFile(html_path))
         self._emit_state()
 
     def _activate_pin(self, name):
+        if not name:
+            return
         self.gpio.all_off()
         self.gpio.set_pin(name, 1)
 
     def _deactivate_pin(self, name):
+        if not name:
+            return
         self.gpio.set_pin(name, 0)
 
     def keyPressEvent(self, event):

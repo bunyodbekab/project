@@ -5,13 +5,85 @@ const topPanel = document.getElementById("topPanel");
 const headerTitle = document.getElementById("headerTitle");
 const headerMain = document.getElementById("headerMain");
 const serviceGrid = document.getElementById("serviceGrid");
+const controlsWrap = document.getElementById("controlsWrap");
 const pauseButton = document.getElementById("pauseButton");
+const pauseText = pauseButton.querySelector(".pause-text");
+const pauseSub = document.getElementById("pauseSub");
 const pauseIconLeft = document.getElementById("pauseIconLeft");
 const pauseIconRight = document.getElementById("pauseIconRight");
 
-const fallbackPauseIcon = encodeURI("../icons/⛔.png");
+const pinModal = document.getElementById("pinModal");
+const pinDots = document.getElementById("pinDots");
+const pinError = document.getElementById("pinError");
+const pinClose = document.getElementById("pinClose");
+const pinSubmit = document.getElementById("pinSubmit");
+const pinClear = document.getElementById("pinClear");
+const pinKeys = document.querySelectorAll(".pin-key");
 
+const fallbackPauseIcon = encodeURI("../icons/⛔.png");
+const SETTINGS_KEY = "moyka.settings.v1";
+const ADMIN_HOLD_MS = 2000;
+
+const DEFAULT_SETTINGS = {
+  pin: "1234",
+  buttonCount: 7,
+  showIcons: true,
+  freePause: 5,
+  paidPause: 120,
+  services: [
+    { name: "SUV", icon: "suv.png", secondsPer5000: 120, theme: "suv", active: true },
+    { name: "OSMOS", icon: "osmos.png", secondsPer5000: 120, theme: "osmos", active: true },
+    { name: "AKTIV", icon: "aktiv.png", secondsPer5000: 120, theme: "aktiv", active: true },
+    { name: "PENA", icon: "pena.png", secondsPer5000: 120, theme: "pena", active: true },
+    { name: "NANO", icon: "nano.png", secondsPer5000: 120, theme: "nano", active: true },
+    { name: "VOSK", icon: "vosk.png", secondsPer5000: 120, theme: "vosk", active: true },
+    { name: "QURITISH", icon: "quritish.png", secondsPer5000: 120, theme: "quritish", active: true },
+  ],
+};
+
+let settings = loadSettings();
 let stopPressed = false;
+let adminHoldTimer = null;
+
+function clone(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+function _normalize_front_settings(settings) {
+  if (!settings) settings = {};
+  return {
+    pin: settings.pin ?? settings.PIN ?? "1234",
+    buttonCount: DEFAULT_SETTINGS.buttonCount,
+    showIcons: settings.showIcons ?? settings.show_icons ?? true,
+    freePause: settings.freePause ?? settings.free_pause ?? settings.pause?.freeSeconds ?? DEFAULT_SETTINGS.freePause,
+    paidPause: settings.paidPause ?? settings.paid_pause ?? settings.pause?.paidSecondsPer5000 ?? DEFAULT_SETTINGS.paidPause,
+    services: settings.services ?? settings.service_list ?? DEFAULT_SETTINGS.services
+  };
+}
+
+function loadSettings() {
+  try {
+    const stored = localStorage.getItem(SETTINGS_KEY);
+    if (stored) {
+      return _normalize_front_settings(JSON.parse(stored));
+    }
+  } catch (e) {
+    console.warn("settings parse error", e);
+  }
+  return _normalize_front_settings(DEFAULT_SETTINGS);
+}
+
+function saveSettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch (e) {
+    console.warn("settings save error", e);
+  }
+
+  if (backend && typeof backend.updateFrontSettings === "function") {
+    backend.updateFrontSettings(settings);
+  }
+}
 
 function parsePayload(payload) {
   if (!payload) {
@@ -41,11 +113,18 @@ function requestState() {
 
 function renderHeader(state) {
   const color = state.headerColor || "#ffffff";
+  const balanceValue = typeof state.balance === "number" ? state.balance : Number(state.balanceText);
+  const isZero = !Number.isNaN(balanceValue) && balanceValue <= 0;
 
   if (state.mode === "idle") {
-    headerTitle.textContent = "BALANS";
+    if (isZero) {
+      headerTitle.textContent = state.title || "XUSH KELIBSIZ";
+      headerMain.textContent = state.mainText || state.welcomeText || "XUSH KELIBSIZ";
+    } else {
+      headerTitle.textContent = "BALANS";
+      headerMain.innerHTML = `${state.balanceText || balanceValue || "0"}<span class="unit">SO'M</span>`;
+    }
     headerTitle.style.color = color;
-    headerMain.innerHTML = `${state.balanceText}<span class="unit">SO'M</span>`;
     headerMain.style.color = color;
     return;
   }
@@ -54,6 +133,34 @@ function renderHeader(state) {
   headerTitle.style.color = color;
   headerMain.textContent = state.mainText || "00:00";
   headerMain.style.color = color;
+}
+
+function resolveIconUrl(iconName) {
+  if (!iconName) return null;
+  return encodeURI(`../icons/${iconName}`);
+}
+
+function mapServicesForRender(state) {
+  const stateServices = Array.isArray(state.services) ? state.services : [];
+  const merged = settings.services.map((cfg, idx) => {
+    const fromState = stateServices.find((s) => s.name === cfg.name) || stateServices[idx] || {};
+    const key = cfg.name || `service-${idx + 1}`;
+    const showIcon = settings.showIcons && cfg.showIcon !== false;
+    const iconFile = cfg.icon || fromState.icon;
+    const iconUrl = showIcon ? resolveIconUrl(iconFile) : null;
+    const active = cfg.active !== false && fromState.active !== false;
+    return {
+      ...fromState,
+      ...cfg,
+      key,
+      label: cfg.name,
+      iconUrl,
+      active,
+    };
+  });
+
+  const limit = settings.buttonCount || merged.length;
+  return merged.filter((svc, idx) => idx < limit && svc.active !== false);
 }
 
 function createServiceButton(service, activeKey) {
@@ -65,11 +172,14 @@ function createServiceButton(service, activeKey) {
     btn.classList.add("is-active");
   }
 
-  if (service.iconUrl) {
+  const showIcon = settings.showIcons && service.showIcon !== false && !!service.iconUrl;
+  if (showIcon) {
     const img = document.createElement("img");
     img.src = service.iconUrl;
-    img.alt = service.label;
+    img.alt = service.label || service.key;
     btn.appendChild(img);
+  } else {
+    btn.classList.add("no-icon");
   }
 
   const label = document.createElement("span");
@@ -89,23 +199,34 @@ function createServiceButton(service, activeKey) {
 
 function renderServices(state) {
   serviceGrid.innerHTML = "";
-  const services = state.services || [];
+  const services = mapServicesForRender(state);
   for (const service of services) {
     serviceGrid.appendChild(createServiceButton(service, state.activeService));
   }
+
+  const pauseInline = services.length % 2 === 1;
+  pauseButton.classList.toggle("pause-inline", pauseInline);
+  pauseButton.classList.toggle("pause-wide", !pauseInline);
+  serviceGrid.appendChild(pauseButton);
 }
 
 function renderPause(state) {
   const isPause = state.mode === "pause";
-  pauseButton.classList.toggle("is-active", isPause);
+  const pauseState = state.pauseState || {};
+  const isFree = pauseState.isFree || pauseState.status === "free";
+  const label = pauseState.label || (isFree ? "TEKIN PAUZA" : "PAUZA");
+  const subText = pauseState.subText || pauseState.remainingText || pauseState.timerText || "";
 
-   const iconUrl = state.pauseIconUrl || fallbackPauseIcon;
-   if (pauseIconLeft) {
-     pauseIconLeft.src = iconUrl;
-   }
-   if (pauseIconRight) {
-     pauseIconRight.src = iconUrl;
-   }
+  pauseButton.classList.toggle("is-active", isPause);
+  pauseButton.classList.toggle("pause-free", isPause && isFree);
+  pauseButton.classList.toggle("pause-paid", isPause && !isFree);
+
+  pauseText.textContent = label;
+  pauseSub.textContent = subText;
+
+  const iconUrl = pauseState.iconUrl || state.pauseIconUrl || fallbackPauseIcon;
+  if (pauseIconLeft) pauseIconLeft.src = iconUrl;
+  if (pauseIconRight) pauseIconRight.src = iconUrl;
 }
 
 function render(state) {
@@ -113,6 +234,42 @@ function render(state) {
   renderHeader(state);
   renderServices(state);
   renderPause(state);
+}
+
+function startAdminHold() {
+  clearAdminHold();
+  adminHoldTimer = setTimeout(() => {
+    stopPausePress();
+    openPinModal();
+  }, ADMIN_HOLD_MS);
+}
+
+function clearAdminHold() {
+  if (adminHoldTimer) {
+    clearTimeout(adminHoldTimer);
+    adminHoldTimer = null;
+  }
+}
+
+function startPausePress() {
+  if (stopPressed) return;
+  stopPressed = true;
+  startAdminHold();
+  if (backend && typeof backend.stopPressed === "function") {
+    backend.stopPressed();
+  }
+}
+
+function stopPausePress() {
+  if (!stopPressed) {
+    clearAdminHold();
+    return;
+  }
+  stopPressed = false;
+  clearAdminHold();
+  if (backend && typeof backend.stopReleased === "function") {
+    backend.stopReleased();
+  }
 }
 
 function initActions() {
@@ -125,33 +282,13 @@ function initActions() {
     }
   });
 
-  const press = () => {
-    if (!backend || stopPressed) {
-      return;
-    }
-    stopPressed = true;
-    if (typeof backend.stopPressed === "function") {
-      backend.stopPressed();
-    }
-  };
+  pauseButton.addEventListener("mousedown", startPausePress);
+  pauseButton.addEventListener("touchstart", startPausePress, { passive: true });
 
-  const release = () => {
-    if (!backend || !stopPressed) {
-      return;
-    }
-    stopPressed = false;
-    if (typeof backend.stopReleased === "function") {
-      backend.stopReleased();
-    }
-  };
-
-  pauseButton.addEventListener("mousedown", press);
-  pauseButton.addEventListener("touchstart", press, { passive: true });
-
-  pauseButton.addEventListener("mouseup", release);
-  pauseButton.addEventListener("mouseleave", release);
-  pauseButton.addEventListener("touchend", release, { passive: true });
-  pauseButton.addEventListener("touchcancel", release, { passive: true });
+  pauseButton.addEventListener("mouseup", stopPausePress);
+  pauseButton.addEventListener("mouseleave", stopPausePress);
+  pauseButton.addEventListener("touchend", stopPausePress, { passive: true });
+  pauseButton.addEventListener("touchcancel", stopPausePress, { passive: true });
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === "NumpadEnter") {
@@ -160,6 +297,68 @@ function initActions() {
       }
     }
   });
+
+  pinSubmit.addEventListener("click", handlePinSubmit);
+  pinClose.addEventListener("click", closePinModal);
+  pinClear.addEventListener("click", clearPin);
+  
+  pinKeys.forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      addPinDigit(e.target.dataset.key);
+    });
+  });
+}
+
+let pinValue = "";
+
+function addPinDigit(digit) {
+  if (pinValue.length < 6) {
+    pinValue += digit;
+    updatePinDisplay();
+    pinError.textContent = "";
+  }
+}
+
+function clearPin() {
+  pinValue = "";
+  updatePinDisplay();
+  pinError.textContent = "";
+}
+
+function updatePinDisplay() {
+  const filled = pinValue.length;
+  const dots = Array(6).fill("•")
+    .map((d, i) => i < filled ? "●" : "•")
+    .join(" ");
+  pinDots.textContent = dots;
+}
+
+function toggleModal(modal, open) {
+  modal.setAttribute("aria-hidden", open ? "false" : "true");
+}
+
+function openPinModal() {
+  pinError.textContent = "";
+  pinValue = "";
+  updatePinDisplay();
+  toggleModal(pinModal, true);
+}
+
+function closePinModal() {
+  toggleModal(pinModal, false);
+  pinValue = "";
+}
+
+function handlePinSubmit() {
+  if (pinValue !== settings.pin) {
+    pinError.textContent = "Noto'g'ri PIN";
+    pinValue = "";
+    updatePinDisplay();
+    return;
+  }
+  closePinModal();
+  // Redirect to admin.html after successful PIN entry
+  window.location.href = "admin.html";
 }
 
 function initWebChannel() {

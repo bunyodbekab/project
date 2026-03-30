@@ -45,7 +45,7 @@
   },
   "moyka_name": "MOYKA",
   "admin_pin": "1234",
-  "total_earned": 189750,
+  "total_earned": 194147,
   "sessions": [
     {
       "service": "OSMOS",
@@ -208,6 +208,78 @@
       "service_name": "SHAMPUN",
       "earned": 500,
       "date": "2026-03-30 20:11:28"
+    },
+    {
+      "service": "VOSK",
+      "service_name": "VOSK",
+      "earned": 350,
+      "date": "2026-03-30 23:12:30"
+    },
+    {
+      "service": "PAUSE",
+      "service_name": "PAUZA",
+      "earned": 7,
+      "date": "2026-03-30 23:12:38"
+    },
+    {
+      "service": "VOSK",
+      "service_name": "VOSK",
+      "earned": 350,
+      "date": "2026-03-30 23:12:44"
+    },
+    {
+      "service": "PAUSE",
+      "service_name": "PAUZA",
+      "earned": 44,
+      "date": "2026-03-30 23:13:29"
+    },
+    {
+      "service": "SUV",
+      "service_name": "SUV",
+      "earned": 150,
+      "date": "2026-03-30 23:29:24"
+    },
+    {
+      "service": "SUV",
+      "service_name": "SUV",
+      "earned": 1050,
+      "date": "2026-03-31 00:38:50"
+    },
+    {
+      "service": "PAUSE",
+      "service_name": "PAUZA",
+      "earned": 294,
+      "date": "2026-03-31 00:39:02"
+    },
+    {
+      "service": "VOSK",
+      "service_name": "VOSK",
+      "earned": 350,
+      "date": "2026-03-31 00:39:04"
+    },
+    {
+      "service": "PAUSE",
+      "service_name": "PAUZA",
+      "earned": 84,
+      "date": "2026-03-31 00:39:12"
+    },
+    {
+      "service": "OSMOS",
+      "service_name": "OSMOS",
+      "earned": 200,
+      "date": "2026-03-31 00:39:13"
+    },
+    {
+      "service": "PAUSE",
+      "service_name": "PAUZA",
+      "earned": 168,
+      "date": "2026-03-31 00:39:23"
+    },
+    {
+      "service": "SUV",
+      "service_name": "SUV",
+      "earned": 1350,
+      "date": "2026-03-31 00:39:32"
     }
   ],
   "shift_register": {

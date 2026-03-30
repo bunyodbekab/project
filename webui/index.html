@@ -18,15 +18,55 @@
 
         <div class="divider"></div>
 
-        <section class="controls-wrap" >
+        <section id="controlsWrap" class="controls-wrap" >
           <div id="serviceGrid" class="service-grid"></div>
 
           <button id="pauseButton" class="pause-button" type="button">
             <img id="pauseIconLeft" class="stop-mark-img" alt="stop" />
-            <span class="pause-text">PAUZA</span>
+            <div class="pause-label">
+              <span class="pause-text">PAUZA</span>
+              <span id="pauseSub" class="pause-sub"></span>
+            </div>
             <img id="pauseIconRight" class="stop-mark-img" alt="stop" />
           </button>
         </section>
+      </div>
+    </div>
+  </div>
+
+  <div id="modalHost">
+    <div id="pinModal" class="modal" aria-hidden="true">
+      <div class="modal-card">
+        <div class="modal-head">
+          <div class="modal-title-wrap">
+            <p class="eyebrow">Admin</p>
+            <h2>PIN kiriting</h2>
+          </div>
+          <button id="pinClose" type="button" class="ghost-btn">Bekor qilish</button>
+        </div>
+        <div class="modal-body">
+          <div id="pinDisplay" class="pin-display">
+            <span id="pinDots" class="pin-dots">• • • • • •</span>
+          </div>
+          <p id="pinError" class="form-error" role="alert"></p>
+          
+          <div class="pin-keypad">
+            <button class="pin-key" data-key="1">1</button>
+            <button class="pin-key" data-key="2">2</button>
+            <button class="pin-key" data-key="3">3</button>
+            <button class="pin-key" data-key="4">4</button>
+            <button class="pin-key" data-key="5">5</button>
+            <button class="pin-key" data-key="6">6</button>
+            <button class="pin-key" data-key="7">7</button>
+            <button class="pin-key" data-key="8">8</button>
+            <button class="pin-key" data-key="9">9</button>
+            <button class="pin-key pin-key-wide" data-key="0">0</button>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button id="pinClear" type="button" class="ghost-btn">O'chirish</button>
+          <button id="pinSubmit" type="button" class="primary-btn">Kirish</button>
+        </div>
       </div>
     </div>
   </div>
