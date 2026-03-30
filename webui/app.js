@@ -23,6 +23,7 @@ const pinKeys = document.querySelectorAll(".pin-key");
 const fallbackPauseIcon = encodeURI("../icons/⛔.png");
 const SETTINGS_KEY = "moyka.settings.v1";
 const ADMIN_HOLD_MS = 2000;
+const INTERACTION_LOCK_MS = 1000;
 
 const DEFAULT_SETTINGS = {
   pin: "1234",
@@ -44,9 +45,21 @@ const DEFAULT_SETTINGS = {
 let settings = loadSettings();
 let stopPressed = false;
 let adminHoldTimer = null;
+let interactionLocked = false;
+let interactionLockTimer = null;
 
 function clone(obj) {
   return JSON.parse(JSON.stringify(obj));
+}
+
+function lockInteractions() {
+  interactionLocked = true;
+  if (interactionLockTimer) {
+    clearTimeout(interactionLockTimer);
+  }
+  interactionLockTimer = setTimeout(() => {
+    interactionLocked = false;
+  }, INTERACTION_LOCK_MS);
 }
 
 function _normalize_front_settings(settings) {
@@ -143,24 +156,32 @@ function resolveIconUrl(iconName) {
 function mapServicesForRender(state) {
   const stateServices = Array.isArray(state.services) ? state.services : [];
   const merged = settings.services.map((cfg, idx) => {
-    const fromState = stateServices.find((s) => s.name === cfg.name) || stateServices[idx] || {};
-    const key = cfg.name || `service-${idx + 1}`;
+    const fromState = stateServices.find((s) => s.key === cfg.name || s.name === cfg.name) || stateServices[idx] || {};
+
+    const key = fromState.key || cfg.key || cfg.name || `service-${idx + 1}`;
+    const label = fromState.label || cfg.name || key;
+    const name = fromState.name || cfg.name || key;
+
     const showIcon = settings.showIcons && cfg.showIcon !== false;
     const iconFile = cfg.icon || fromState.icon;
     const iconUrl = showIcon ? resolveIconUrl(iconFile) : null;
-    const active = cfg.active !== false && fromState.active !== false;
+    const active = (cfg.active !== false) && (fromState.active !== false);
+
     return {
       ...fromState,
       ...cfg,
       key,
-      label: cfg.name,
+      name,
+      label,
       iconUrl,
       active,
     };
   });
 
   const limit = settings.buttonCount || merged.length;
-  return merged.filter((svc, idx) => idx < limit && svc.active !== false);
+  const ready = merged.filter((svc, idx) => idx < limit && svc.active !== false);
+  console.log("[MAP] services", ready.map((s) => ({ key: s.key, name: s.name, label: s.label, theme: s.theme, icon: s.icon, active: s.active })));
+  return ready;
 }
 
 function createServiceButton(service, activeKey) {
@@ -188,9 +209,14 @@ function createServiceButton(service, activeKey) {
   btn.appendChild(label);
 
   btn.addEventListener("click", () => {
+    console.log("[CLICK] front", service.key, "name", service.name, "label", service.label, "theme", service.theme);
+    if (interactionLocked) {
+      return;
+    }
     if (!backend || typeof backend.selectService !== "function") {
       return;
     }
+    lockInteractions();
     backend.selectService(service.key);
   });
 

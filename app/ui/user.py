@@ -184,10 +184,19 @@ class MoykaUI(QWidget):
         for idx, svc in enumerate(services):
             seconds = int(svc.get("secondsPer5000") or svc.get("seconds_per_5000") or 60)
             seconds = max(1, seconds)
+            key_val = svc.get("key") or svc.get("name") or f"service-{idx+1}"
+            label_val = (
+                svc.get("label")
+                or svc.get("display_name")
+                or svc.get("name")
+                or svc.get("key")
+                or f"Tugma {idx+1}"
+            )
             norm_services.append(
                 {
-                    "key": svc.get("key") or f"service-{idx+1}",
-                    "label": svc.get("label") or svc.get("display_name") or svc.get("name") or svc.get("key") or f"Tugma {idx+1}",
+                    "key": key_val,
+                    "name": svc.get("name") or key_val,
+                    "label": label_val,
                     "theme": svc.get("theme") or "suv",
                     "icon": svc.get("icon") or "",
                     "iconUrl": svc.get("iconUrl") or "",
@@ -296,17 +305,81 @@ class MoykaUI(QWidget):
         self.front_key_to_hw = fk_to_hw
         self.hw_to_front = hw_to_fk
         self._apply_pause_settings()
+        try:
+            print("[MAP] Front -> HW mapping:")
+            for slot in self.front_services:
+                print(
+                    f"  front_key={slot.get('front_key')} label={slot.get('label')} theme={slot.get('theme')} hw_key={slot.get('hw_key')} price={self.price_per_sec.get(slot.get('front_key'))}"
+                )
+        except Exception as e:
+            print(f"[MAP] print failed: {e}")
 
     def _map_to_hw_service(self, svc, used):
         aliases = []
-        if svc.get("label"):
-            aliases.append(svc["label"])
-        if svc.get("key"):
-            aliases.append(svc["key"])
+        label = (svc.get("label") or "").strip()
+        key = (svc.get("key") or svc.get("name") or "").strip()
+        theme = (svc.get("theme") or "").strip().upper()
+        name_field = (svc.get("name") or "").strip()
+
+        # Hard map common front labels/keys to backend service names first
+        canonical = {
+            "SUV": "SUV",
+            "OSMOS": "OSMOS",
+            "AKTIV": "KO'PIK",
+            "AKTIV PENA": "KO'PIK",
+            "PENA": "PENA",
+            "NANO": "SHAMPUN",
+            "VOSK": "VOSK",
+            "QURITISH": "QURITISH",
+        }
+        for candidate in (label, key, name_field):
+            c_up = candidate.upper()
+            if c_up in canonical:
+                mapped = canonical[c_up]
+                if mapped in self.cfg["services"] and mapped not in used:
+                    print(f"[MAP] canonical match {candidate} -> {mapped}")
+                    used.add(mapped)
+                    return mapped
+
+        if label:
+            aliases.append(label)
+        if key:
+            aliases.append(key)
+        if name_field:
+            aliases.append(name_field)
+        if theme:
+            aliases.append(theme)
+
+        theme_aliases = {
+            "SUV": ["SUV"],
+            "OSMOS": ["OSMOS"],
+            "AKTIV": ["AKTIV", "KO'PIK", "KOPIK", "FOAM"],
+            "PENA": ["PENA"],
+            "NANO": ["NANO", "SHAMPUN", "QURITISH"],
+            "VOSK": ["VOSK"],
+            "QURITISH": ["QURITISH"],
+        }
+        for alias in theme_aliases.get(theme, []):
+            aliases.append(alias)
+
         picked = self._pick_service_for_aliases(aliases, used)
         if picked:
+            print(f"[MAP] alias match {aliases} -> {picked}")
             used.add(picked)
             return picked
+
+        for candidate in (name_field, label, key):
+            if candidate and candidate in self.cfg["services"] and candidate not in used:
+                print(f"[MAP] direct name match {candidate}")
+                used.add(candidate)
+                return candidate
+
+        for fallback in self.cfg["services"].keys():
+            if fallback not in used:
+                print(f"[MAP] fallback -> {fallback}")
+                used.add(fallback)
+                return fallback
+
         return None
 
     def update_front_settings(self, settings):
@@ -520,7 +593,9 @@ class MoykaUI(QWidget):
         front_key = front_key or ""
         hw_key = self.front_key_to_hw.get(front_key, front_key)
         price = self.price_per_sec.get(front_key)
+        print(f"[CLICK] front_key={front_key} hw_key={hw_key} price={price} balance={self.balance}")
         if hw_key not in self.cfg["services"]:
+            print(f"[CLICK] hw_key {hw_key} not in services")
             return
 
         cost = max(1, int(price or self.cfg["services"][hw_key].get("price_per_sec", 1)))

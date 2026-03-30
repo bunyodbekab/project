@@ -45,7 +45,7 @@
   },
   "moyka_name": "MOYKA",
   "admin_pin": "1234",
-  "total_earned": 194147,
+  "total_earned": 224399,
   "sessions": [
     {
       "service": "OSMOS",
@@ -280,6 +280,54 @@
       "service_name": "SUV",
       "earned": 1350,
       "date": "2026-03-31 00:39:32"
+    },
+    {
+      "service": "SHAMPUN",
+      "service_name": "SHAMPUN",
+      "earned": 252,
+      "date": "2026-03-31 01:44:51"
+    },
+    {
+      "service": "KO'PIK",
+      "service_name": "KO'PIK",
+      "earned": 20000,
+      "date": "2026-03-31 02:00:18"
+    },
+    {
+      "service": "SUV",
+      "service_name": "SUV",
+      "earned": 150,
+      "date": "2026-03-31 02:00:29"
+    },
+    {
+      "service": "PAUSE",
+      "service_name": "PAUZA",
+      "earned": 268,
+      "date": "2026-03-31 02:00:52"
+    },
+    {
+      "service": "VOSK",
+      "service_name": "VOSK",
+      "earned": 42,
+      "date": "2026-03-31 02:00:53"
+    },
+    {
+      "service": "PAUSE",
+      "service_name": "PAUZA",
+      "earned": 924,
+      "date": "2026-03-31 02:01:21"
+    },
+    {
+      "service": "SUV",
+      "service_name": "SUV",
+      "earned": 798,
+      "date": "2026-03-31 02:01:40"
+    },
+    {
+      "service": "PAUSE",
+      "service_name": "PAUZA",
+      "earned": 7818,
+      "date": "2026-03-31 02:04:52"
     }
   ],
   "shift_register": {
