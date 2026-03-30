@@ -45,7 +45,7 @@
   },
   "moyka_name": "MOYKA",
   "admin_pin": "1234",
-  "total_earned": 39950,
+  "total_earned": 189750,
   "sessions": [
     {
       "service": "OSMOS",
@@ -94,6 +94,120 @@
       "service_name": "SUV",
       "earned": 450,
       "date": "2026-03-30 01:22:27"
+    },
+    {
+      "service": "KO'PIK",
+      "service_name": "KO'PIK",
+      "earned": 400,
+      "date": "2026-03-30 18:24:33"
+    },
+    {
+      "service": "VOSK",
+      "service_name": "VOSK",
+      "earned": 1400,
+      "date": "2026-03-30 18:25:06"
+    },
+    {
+      "service": "SUV",
+      "service_name": "SUV",
+      "earned": 1200,
+      "date": "2026-03-30 18:25:15"
+    },
+    {
+      "service": "VOSK",
+      "service_name": "VOSK",
+      "earned": 4550,
+      "date": "2026-03-30 18:26:38"
+    },
+    {
+      "service": "PENA",
+      "service_name": "PENA",
+      "earned": 300,
+      "date": "2026-03-30 18:31:06"
+    },
+    {
+      "service": "SUV",
+      "service_name": "SUV",
+      "earned": 30000,
+      "date": "2026-03-30 18:49:05"
+    },
+    {
+      "service": "KO'PIK",
+      "service_name": "KO'PIK",
+      "earned": 20000,
+      "date": "2026-03-30 19:30:07"
+    },
+    {
+      "service": "SUV",
+      "service_name": "SUV",
+      "earned": 19950,
+      "date": "2026-03-30 19:33:25"
+    },
+    {
+      "service": "SUV",
+      "service_name": "SUV",
+      "earned": 150,
+      "date": "2026-03-30 19:54:25"
+    },
+    {
+      "service": "SUV",
+      "service_name": "SUV",
+      "earned": 1050,
+      "date": "2026-03-30 19:54:54"
+    },
+    {
+      "service": "SHAMPUN",
+      "service_name": "SHAMPUN",
+      "earned": 250,
+      "date": "2026-03-30 19:56:07"
+    },
+    {
+      "service": "SUV",
+      "service_name": "SUV",
+      "earned": 150,
+      "date": "2026-03-30 19:56:14"
+    },
+    {
+      "service": "OSMOS",
+      "service_name": "OSMOS",
+      "earned": 2000,
+      "date": "2026-03-30 20:01:57"
+    },
+    {
+      "service": "SUV",
+      "service_name": "SUV",
+      "earned": 21450,
+      "date": "2026-03-30 20:05:19"
+    },
+    {
+      "service": "OSMOS",
+      "service_name": "OSMOS",
+      "earned": 6400,
+      "date": "2026-03-30 20:05:53"
+    },
+    {
+      "service": "PENA",
+      "service_name": "PENA",
+      "earned": 13500,
+      "date": "2026-03-30 20:07:01"
+    },
+    {
+      "service": "SUV",
+      "service_name": "SUV",
+      "earned": 150,
+      "date": "2026-03-30 20:07:32"
+    },
+    {
+      "service": "OSMOS",
+      "service_name": "OSMOS",
+      "earned": 26400,
+      "date": "2026-03-30 20:10:00"
+    },
+    {
+      "service": "SHAMPUN",
+      "service_name": "SHAMPUN",
+      "earned": 500,
+      "date": "2026-03-30 20:11:28"
     }
   ],
   "shift_register": {
