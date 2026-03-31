@@ -304,5 +304,41 @@
     "service_name": "SUV",
     "earned": 150,
     "date": "2026-03-31 21:23:02"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "XIZMAT 1",
+    "earned": 400,
+    "date": "2026-03-31 22:20:01"
+  },
+  {
+    "service": "PAUSE",
+    "service_name": "PAUZA",
+    "earned": 25,
+    "date": "2026-03-31 22:20:26"
+  },
+  {
+    "service": "XIZMAT2",
+    "service_name": "XIZMAT 2",
+    "earned": 3000,
+    "date": "2026-03-31 22:21:05"
+  },
+  {
+    "service": "PAUSE",
+    "service_name": "PAUZA",
+    "earned": 3414,
+    "date": "2026-03-31 22:22:38"
+  },
+  {
+    "service": "XIZMAT2",
+    "service_name": "XIZMAT 2",
+    "earned": 161,
+    "date": "2026-03-31 22:22:42"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "XIZMAT 1",
+    "earned": 20000,
+    "date": "2026-03-31 22:43:32"
   }
 ]

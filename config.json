@@ -1,54 +1,58 @@
 {
   "services": {
-    "KO'PIK": {
-      "display_name": "KO'PIK",
+    "XIZMAT1": {
+      "display_name": "XIZMAT 1",
       "price_per_sec": 200,
       "duration": 60,
-      "relay_bit": 0
+      "gpio_out": 227
     },
-    "SUV": {
-      "display_name": "SUV",
+    "XIZMAT2": {
+      "display_name": "XIZMAT 2",
       "price_per_sec": 150,
       "duration": 100,
-      "relay_bit": 1
+      "gpio_out": 75
     },
-    "SHAMPUN": {
-      "display_name": "SHAMPUN",
+    "XIZMAT3": {
+      "display_name": "XIZMAT 3",
       "price_per_sec": 250,
       "duration": 80,
-      "relay_bit": 2
+      "gpio_out": 79
     },
-    "VOSK": {
-      "display_name": "VOSK",
+    "XIZMAT4": {
+      "display_name": "XIZMAT 4",
       "price_per_sec": 350,
       "duration": 70,
-      "relay_bit": 3
+      "gpio_out": 78
     },
-    "PENA": {
-      "display_name": "PENA",
+    "XIZMAT5": {
+      "display_name": "XIZMAT 5",
       "price_per_sec": 300,
       "duration": 50,
-      "relay_bit": 4
+      "gpio_out": 71
     },
-    "OSMOS": {
-      "display_name": "OSMOS",
+    "XIZMAT6": {
+      "display_name": "XIZMAT 6",
       "price_per_sec": 200,
       "duration": 90,
-      "relay_bit": 5
+      "gpio_out": 233
     },
-    "QURITISH": {
-      "display_name": "QURITISH",
+    "XIZMAT7": {
+      "display_name": "XIZMAT 7",
       "price_per_sec": 100,
       "duration": 120,
-      "relay_bit": 6
+      "gpio_out": 74
     }
   },
   "moyka_name": "MOYKA",
   "admin_pin": "1234",
-  "total_earned": 235919,
-  "shift_register": {
-    "data_pin": 227,
-    "clock_pin": 75,
-    "latch_pin": 79
+  "admin_pin_alt": "5678",
+  "bonus": {
+    "percent": 0,
+    "threshold": 0
+  },
+  "total_earned": 262919,
+  "pause": {
+    "freeSeconds": 5,
+    "paidSecondsPer5000": 120
   }
 }

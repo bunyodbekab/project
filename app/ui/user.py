@@ -1,7 +1,9 @@
 import json
 import math
 import os
+import threading
 from datetime import datetime
+from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 from PyQt5.QtCore import QObject, QTimer, QUrl, Qt, pyqtSignal, pyqtSlot, QRectF
 from PyQt5.QtWebChannel import QWebChannel
@@ -24,6 +26,10 @@ class WebBridge(QObject):
     @pyqtSlot(result=str)
     def getState(self):
         return self.ui._state_json()
+
+    @pyqtSlot(result=str)
+    def getSettings(self):
+        return json.dumps(self.ui._settings_payload(), ensure_ascii=False)
 
     @pyqtSlot()
     def addMoney(self):
@@ -98,9 +104,8 @@ class MoykaUI(QWidget):
         self.setFixedSize(width, height)
 
         self.cfg = load_config()
-        relay_map = {name: data["relay_bit"] for name, data in self.cfg["services"].items()}
-        shift_cfg = self.cfg.get("shift_register", {"data_pin": 227, "clock_pin": 75, "latch_pin": 79})
-        self.gpio = GPIOController(relay_map, shift_cfg)
+        relay_map = {name: data.get("gpio_out", data.get("relay_bit", idx)) for idx, (name, data) in enumerate(self.cfg["services"].items())}
+        self.gpio = GPIOController(relay_map)
 
         self.front_settings = None
         self.front_services = []
@@ -120,6 +125,7 @@ class MoykaUI(QWidget):
         self.pause_mode = False
         self.show_timer_mode = False
         self.session_earned = 0
+        self._bonus_awarded = False
 
         self.blink_state = False
         self._low_balance_flash = False
@@ -174,6 +180,7 @@ class MoykaUI(QWidget):
         self.web_view.setUrl(QUrl.fromLocalFile(html_path))
 
         self._rebuild_front_services()
+        self._start_http_server()
 
     def _normalize_front_settings(self, raw):
         if not isinstance(raw, dict):
@@ -226,6 +233,28 @@ class MoykaUI(QWidget):
             ),
         )
 
+        pin1 = str(raw.get("pin") or self.cfg.get("admin_pin", "1234"))
+        pin2 = str(
+            raw.get("pin2")
+            or raw.get("pin_alt")
+            or raw.get("admin_pin_alt")
+            or raw.get("adminPinAlt")
+            or self.cfg.get("admin_pin_alt", "5678")
+        )
+
+        bonus_percent = int(
+            raw.get("bonusPercent")
+            or raw.get("bonus_percent")
+            or (raw.get("bonus") or {}).get("percent", 0)
+            or self.cfg.get("bonus", {}).get("percent", 0)
+        )
+        bonus_threshold = int(
+            raw.get("bonusThreshold")
+            or raw.get("bonus_threshold")
+            or (raw.get("bonus") or {}).get("threshold", 0)
+            or self.cfg.get("bonus", {}).get("threshold", 0)
+        )
+
         total_buttons = 7
 
         show_icons = raw.get("showIcons")
@@ -233,22 +262,25 @@ class MoykaUI(QWidget):
             show_icons = raw.get("show_icons", True)
 
         return {
-            "pin": str(raw.get("pin") or self.cfg.get("admin_pin", "1234")),
+            "pin": pin1,
+            "pin2": pin2,
             "totalButtons": int(total_buttons),
             "showIcons": bool(show_icons),
             "pause": {"freeSeconds": free_sec, "paidSecondsPer5000": paid_sec},
             "services": norm_services,
+            "bonus": {"percent": bonus_percent, "threshold": bonus_threshold},
         }
 
     def _apply_pause_settings(self):
+        pause_cfg = None
         if self.front_settings:
             pause_cfg = self.front_settings.get("pause", {})
-            self.pause_free_default = max(0, int(pause_cfg.get("freeSeconds", 0)))
-            paid_sec = max(1, int(pause_cfg.get("paidSecondsPer5000", 60)))
-            self.pause_paid_rate = max(1, math.ceil(5000 / paid_sec))
-        else:
-            self.pause_free_default = 0
-            self.pause_paid_rate = 1
+        if not pause_cfg:
+            pause_cfg = (self.cfg.get("pause") or {})
+
+        self.pause_free_default = max(0, int((pause_cfg or {}).get("freeSeconds", 0)))
+        paid_sec = max(1, int((pause_cfg or {}).get("paidSecondsPer5000", 60)))
+        self.pause_paid_rate = max(1, math.ceil(5000 / paid_sec))
 
     def _rebuild_front_services(self):
         services = []
@@ -389,6 +421,31 @@ class MoykaUI(QWidget):
         self.front_settings = norm
         # sync PIN to backend config for admin overlay
         self.cfg["admin_pin"] = norm.get("pin", self.cfg.get("admin_pin", "1234"))
+        self.cfg["admin_pin_alt"] = norm.get("pin2", self.cfg.get("admin_pin_alt", "5678"))
+        bonus_cfg = norm.get("bonus", {}) or {}
+        self.cfg["bonus"] = {
+            "percent": int(bonus_cfg.get("percent", 0) or 0),
+            "threshold": int(bonus_cfg.get("threshold", 0) or 0),
+        }
+        pause_cfg = norm.get("pause", {}) or {}
+        self.cfg["pause"] = {
+            "freeSeconds": int(pause_cfg.get("freeSeconds", 0) or 0),
+            "paidSecondsPer5000": int(pause_cfg.get("paidSecondsPer5000", 60) or 60),
+        }
+
+        # persist service settings (label -> display_name, secondsPer5000 -> price_per_sec)
+        for svc in norm.get("services", []):
+            key = svc.get("name") or svc.get("key")
+            if not key or key not in self.cfg["services"]:
+                continue
+            seconds = max(1, int(svc.get("secondsPer5000", 60)))
+            price_per_sec = max(1, math.ceil(5000 / seconds))
+            display_name = svc.get("label") or svc.get("display_name") or self.cfg["services"][key].get("display_name", key)
+            self.cfg["services"][key]["price_per_sec"] = price_per_sec
+            self.cfg["services"][key]["duration"] = max(1, int(svc.get("duration", seconds)))
+            self.cfg["services"][key]["display_name"] = display_name
+            # keep gpio_out untouched
+
         save_config(self.cfg)
         self._rebuild_front_services()
         self._emit_state()
@@ -577,6 +634,28 @@ class MoykaUI(QWidget):
             "pauseState": pause_state,
             "canAddMoney": mode == "idle",
             "total_earned": self.cfg.get("total_earned", 0),
+            "admin_pins": [self.cfg.get("admin_pin", "1234"), self.cfg.get("admin_pin_alt", "5678")],
+            "bonus": self.cfg.get("bonus", {}),
+        }
+
+    def _settings_payload(self):
+        return {
+            "pin": self.cfg.get("admin_pin", "1234"),
+            "pin2": self.cfg.get("admin_pin_alt", "5678"),
+            "bonus": self.cfg.get("bonus", {}),
+            "pause": self.cfg.get("pause", {}),
+            "services": [
+                {
+                    "name": key,
+                    "display_name": svc.get("display_name", key),
+                    "price_per_sec": svc.get("price_per_sec", 1),
+                    "secondsPer5000": max(1, math.ceil(5000 / max(1, svc.get("price_per_sec", 1)))),
+                    "duration": svc.get("duration", 60),
+                    "gpio_out": svc.get("gpio_out"),
+                }
+                for key, svc in self.cfg.get("services", {}).items()
+            ],
+            "moyka_name": self.cfg.get("moyka_name", "MOYKA"),
         }
 
     def _state_json(self):
@@ -587,8 +666,23 @@ class MoykaUI(QWidget):
 
     def add_money(self, amount=5000):
         self.balance += amount
+        self._apply_bonus_if_needed()
         self._emit_state()
         self._check_blink()
+
+    def _apply_bonus_if_needed(self):
+        bonus_cfg = self.cfg.get("bonus", {}) or {}
+        pct = max(0, int(bonus_cfg.get("percent", 0)))
+        threshold = max(0, int(bonus_cfg.get("threshold", 0)))
+        if pct <= 0 or threshold <= 0:
+            return
+        if self._bonus_awarded:
+            return
+        if self.balance >= threshold:
+            extra = int((self.balance * pct) / 100)
+            if extra > 0:
+                self.balance += extra
+                self._bonus_awarded = True
 
     def button_clicked(self, front_key):
         front_key = front_key or ""
@@ -715,6 +809,7 @@ class MoykaUI(QWidget):
             )
             save_config(self.cfg)
         self.session_earned = 0
+        self._bonus_awarded = False
         self._emit_state()
         self._check_blink()
 
@@ -752,6 +847,9 @@ class MoykaUI(QWidget):
             self._deactivate_pin(self.active_service)
             self.active_service = None
             self.active_front_key = None
+
+        if self.balance <= 0:
+            self._bonus_awarded = False
 
         if self.pause_mode:
             self.pause_stage = "free" if self.pause_free_default > 0 else "paid"
@@ -805,14 +903,134 @@ class MoykaUI(QWidget):
                     self._on_stop_pressed("gpio")
                 elif val == 0 and prev == 1:
                     self._on_stop_released("gpio")
+            elif svc_name == "PUL":
+                if val == 1 and prev == 0:
+                    self.add_money(1000)
             elif val == 1 and prev == 0:
                 front_key = self.hw_to_front.get(svc_name, svc_name)
                 self.button_clicked(front_key)
 
             self._prev_input[gpio_line] = val
+    def _start_http_server(self, port=8080):
+        web_root = os.path.join(BASE_DIR, "webui")
+        ui_ref = self
 
+        class Handler(SimpleHTTPRequestHandler):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, directory=web_root, **kwargs)
 
+            def log_message(self, fmt, *args):
+                return
 
+            def _send_json(self, payload, status=200):
+                body = json.dumps(payload).encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_OPTIONS(self):
+                self.send_response(204)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                self.end_headers()
+
+            def do_GET(self):
+                if self.path.startswith("/api/state"):
+                    return self._send_json(ui_ref._state_dict())
+                if self.path.startswith("/api/config"):
+                    return self._send_json(ui_ref.cfg)
+                return super().do_GET()
+
+            def do_POST(self):
+                if self.path.startswith("/api/config"):
+                    length = int(self.headers.get("Content-Length", "0") or 0)
+                    data = {}
+                    if length > 0:
+                        try:
+                            raw = self.rfile.read(length)
+                            data = json.loads(raw.decode("utf-8"))
+                        except Exception:
+                            data = {}
+                    ui_ref._update_config_from_api(data)
+                    return self._send_json({"ok": True, "config": ui_ref.cfg})
+                return self._send_json({"error": "Not found"}, status=404)
+
+        def runner():
+            try:
+                srv = HTTPServer(("0.0.0.0", port), Handler)
+                self._http_server = srv
+                print(f"[API] HTTP server http://0.0.0.0:{port}")
+                srv.serve_forever()
+            except Exception as e:
+                print(f"[API] start xato: {e}")
+
+        t = threading.Thread(target=runner, daemon=True)
+        t.start()
+        self._http_thread = t
+
+    def _update_config_from_api(self, data):
+        if not isinstance(data, dict):
+            return
+        if "admin_pin" in data:
+            self.cfg["admin_pin"] = str(data.get("admin_pin") or self.cfg.get("admin_pin", "1234"))
+        if "admin_pin_alt" in data or "pin2" in data:
+            self.cfg["admin_pin_alt"] = str(data.get("admin_pin_alt") or data.get("pin2") or self.cfg.get("admin_pin_alt", "5678"))
+        if "bonus" in data and isinstance(data["bonus"], dict):
+            bonus = data["bonus"]
+            self.cfg["bonus"] = {
+                "percent": int(bonus.get("percent", 0) or 0),
+                "threshold": int(bonus.get("threshold", 0) or 0),
+            }
+        if "pause" in data and isinstance(data["pause"], dict):
+            pause = data["pause"]
+            self.cfg["pause"] = {
+                "freeSeconds": int(pause.get("freeSeconds", 0) or 0),
+                "paidSecondsPer5000": int(pause.get("paidSecondsPer5000", 60) or 60),
+            }
+        if "moyka_name" in data:
+            self.cfg["moyka_name"] = str(data.get("moyka_name") or self.cfg.get("moyka_name", "MOYKA"))
+        if "services" in data:
+            if isinstance(data["services"], dict):
+                for key, svc in data["services"].items():
+                    if key in self.cfg["services"] and isinstance(svc, dict):
+                        self._update_service_from_api(key, svc)
+            elif isinstance(data["services"], list):
+                for svc in data["services"]:
+                    if isinstance(svc, dict):
+                        key = svc.get("name")
+                        if key and key in self.cfg["services"]:
+                            self._update_service_from_api(key, svc)
+        save_config(self.cfg)
+        self._rebuild_front_services()
+        self._emit_state()
+
+    def _update_service_from_api(self, key, svc):
+        target = self.cfg["services"].get(key, {})
+        display_name = svc.get("display_name") or svc.get("label")
+        if display_name:
+            target["display_name"] = display_name
+        if "duration" in svc:
+            try:
+                target["duration"] = max(1, int(svc["duration"]))
+            except Exception:
+                pass
+        # price can come as price_per_sec or secondsPer5000
+        if "price_per_sec" in svc:
+            try:
+                target["price_per_sec"] = max(1, int(svc["price_per_sec"]))
+            except Exception:
+                pass
+        if "secondsPer5000" in svc:
+            try:
+                secs = max(1, int(svc["secondsPer5000"]))
+                target["price_per_sec"] = max(1, math.ceil(5000 / secs))
+            except Exception:
+                pass
+        # do not overwrite gpio_out here
 
 
     def _open_admin_panel(self):
@@ -837,12 +1055,13 @@ class MoykaUI(QWidget):
             return
         self.gpio.set_pin(name, 0)
 
-    def keyPressEvent(self, event):
-        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
-            self.add_money(5000)
-
     def closeEvent(self, event):
         self.gpio.cleanup()
+        if getattr(self, "_http_server", None):
+            try:
+                self._http_server.shutdown()
+            except Exception:
+                pass
         super().closeEvent(event)
 
 

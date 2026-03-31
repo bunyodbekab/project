@@ -8,32 +8,31 @@ ICONS_DIR = os.path.join(BASE_DIR, "icons")
 
 DEFAULT_CONFIG = {
     "services": {
-        "KO'PIK": {"display_name": "KO'PIK", "price_per_sec": 200, "duration": 60, "relay_bit": 0},
-        "SUV": {"display_name": "SUV", "price_per_sec": 150, "duration": 100, "relay_bit": 1},
-        "SHAMPUN": {"display_name": "SHAMPUN", "price_per_sec": 250, "duration": 80, "relay_bit": 2},
-        "VOSK": {"display_name": "VOSK", "price_per_sec": 350, "duration": 70, "relay_bit": 3},
-        "PENA": {"display_name": "PENA", "price_per_sec": 300, "duration": 50, "relay_bit": 4},
-        "OSMOS": {"display_name": "OSMOS", "price_per_sec": 200, "duration": 90, "relay_bit": 5},
-        "QURITISH": {"display_name": "QURITISH", "price_per_sec": 100, "duration": 120, "relay_bit": 6},
+        "XIZMAT1": {"display_name": "XIZMAT 1", "price_per_sec": 200, "duration": 60, "gpio_out": 227},
+        "XIZMAT2": {"display_name": "XIZMAT 2", "price_per_sec": 150, "duration": 100, "gpio_out": 75},
+        "XIZMAT3": {"display_name": "XIZMAT 3", "price_per_sec": 250, "duration": 80, "gpio_out": 79},
+        "XIZMAT4": {"display_name": "XIZMAT 4", "price_per_sec": 350, "duration": 70, "gpio_out": 78},
+        "XIZMAT5": {"display_name": "XIZMAT 5", "price_per_sec": 300, "duration": 50, "gpio_out": 71},
+        "XIZMAT6": {"display_name": "XIZMAT 6", "price_per_sec": 200, "duration": 90, "gpio_out": 233},
+        "XIZMAT7": {"display_name": "XIZMAT 7", "price_per_sec": 100, "duration": 120, "gpio_out": 74},
     },
     "moyka_name": "MOYKA",
     "admin_pin": "1234",
+    "admin_pin_alt": "5678",
     "total_earned": 0,
-    "shift_register": {
-        "data_pin": 227,
-        "clock_pin": 75,
-        "latch_pin": 79,
-    },
+    "bonus": {"percent": 0, "threshold": 0},
+    "pause": {"freeSeconds": 5, "paidSecondsPer5000": 120},
 }
 
+# 1:1 mapping with up to 7 physical buttons (PUL = coin/acceptor pulse)
 INPUT_GPIO_TO_SERVICE = {
-    229: "KO'PIK",
-    228: "SUV",
-    73: "SHAMPUN",
-    70: "VOSK",
-    72: "PENA",
-    231: "OSMOS",
-    232: "QURITISH",
+    229: "PUL",        # pul qabul qiluvchi kiritma (har impuls = 1000 so'm)
+    228: "XIZMAT1",
+    73: "XIZMAT2",
+    70: "XIZMAT3",
+    72: "XIZMAT4",
+    231: "XIZMAT5",
+    232: "XIZMAT6",
     230: "STOP",
 }
 

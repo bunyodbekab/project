@@ -27,26 +27,30 @@ const INTERACTION_LOCK_MS = 1000;
 
 const DEFAULT_SETTINGS = {
   pin: "1234",
+  pin2: "5678",
   buttonCount: 7,
   showIcons: true,
   freePause: 5,
   paidPause: 120,
   services: [
-    { name: "SUV", icon: "suv.png", secondsPer5000: 120, theme: "suv", active: true },
-    { name: "OSMOS", icon: "osmos.png", secondsPer5000: 120, theme: "osmos", active: true },
-    { name: "AKTIV", icon: "aktiv.png", secondsPer5000: 120, theme: "aktiv", active: true },
-    { name: "PENA", icon: "pena.png", secondsPer5000: 120, theme: "pena", active: true },
-    { name: "NANO", icon: "nano.png", secondsPer5000: 120, theme: "nano", active: true },
-    { name: "VOSK", icon: "vosk.png", secondsPer5000: 120, theme: "vosk", active: true },
-    { name: "QURITISH", icon: "quritish.png", secondsPer5000: 120, theme: "quritish", active: true },
+    { name: "XIZMAT1", label: "Xizmat 1", icon: "suv.png", secondsPer5000: 120, theme: "suv", active: true },
+    { name: "XIZMAT2", label: "Xizmat 2", icon: "osmos.png", secondsPer5000: 120, theme: "osmos", active: true },
+    { name: "XIZMAT3", label: "Xizmat 3", icon: "aktiv.png", secondsPer5000: 120, theme: "aktiv", active: true },
+    { name: "XIZMAT4", label: "Xizmat 4", icon: "pena.png", secondsPer5000: 120, theme: "pena", active: true },
+    { name: "XIZMAT5", label: "Xizmat 5", icon: "nano.png", secondsPer5000: 120, theme: "nano", active: true },
+    { name: "XIZMAT6", label: "Xizmat 6", icon: "vosk.png", secondsPer5000: 120, theme: "vosk", active: true },
+    { name: "XIZMAT7", label: "Xizmat 7", icon: "quritish.png", secondsPer5000: 120, theme: "quritish", active: true },
   ],
 };
+
+let allowedPins = [];
 
 let settings = loadSettings();
 let stopPressed = false;
 let adminHoldTimer = null;
 let interactionLocked = false;
 let interactionLockTimer = null;
+let addMoneyLocked = false;
 
 function clone(obj) {
   return JSON.parse(JSON.stringify(obj));
@@ -62,10 +66,25 @@ function lockInteractions() {
   }, INTERACTION_LOCK_MS);
 }
 
+function safeAddMoney() {
+  if (addMoneyLocked) return;
+  addMoneyLocked = true;
+  setTimeout(() => {
+    addMoneyLocked = false;
+  }, 250);
+  if (!backend || !latestState || !latestState.canAddMoney) {
+    return;
+  }
+  if (typeof backend.addMoney === "function") {
+    backend.addMoney();
+  }
+}
+
 function _normalize_front_settings(settings) {
   if (!settings) settings = {};
   return {
     pin: settings.pin ?? settings.PIN ?? "1234",
+    pin2: settings.pin2 ?? settings.pin_alt ?? settings.admin_pin_alt ?? "5678",
     buttonCount: DEFAULT_SETTINGS.buttonCount,
     showIcons: settings.showIcons ?? settings.show_icons ?? true,
     freePause: settings.freePause ?? settings.free_pause ?? settings.pause?.freeSeconds ?? DEFAULT_SETTINGS.freePause,
@@ -257,6 +276,9 @@ function renderPause(state) {
 
 function render(state) {
   latestState = state;
+   if (Array.isArray(state.admin_pins)) {
+    allowedPins = state.admin_pins.filter(Boolean);
+  }
   renderHeader(state);
   renderServices(state);
   renderPause(state);
@@ -300,12 +322,7 @@ function stopPausePress() {
 
 function initActions() {
   topPanel.addEventListener("click", () => {
-    if (!backend || !latestState || !latestState.canAddMoney) {
-      return;
-    }
-    if (typeof backend.addMoney === "function") {
-      backend.addMoney();
-    }
+    safeAddMoney();
   });
 
   pauseButton.addEventListener("mousedown", startPausePress);
@@ -322,10 +339,8 @@ function initActions() {
       window.location.reload();
       return;
     }
-    if (e.key === "Enter" || e.key === "NumpadEnter") {
-      if (backend && latestState && latestState.canAddMoney && typeof backend.addMoney === "function") {
-        backend.addMoney();
-      }
+    if (!e.repeat && (e.key === "Enter" || e.key === "NumpadEnter")) {
+      safeAddMoney();
     }
   });
 
@@ -381,7 +396,8 @@ function closePinModal() {
 }
 
 function handlePinSubmit() {
-  if (pinValue !== settings.pin) {
+  const pins = (allowedPins && allowedPins.length > 0) ? allowedPins : [settings.pin, settings.pin2].filter(Boolean);
+  if (!pins.includes(pinValue)) {
     pinError.textContent = "Noto'g'ri PIN";
     pinValue = "";
     updatePinDisplay();

@@ -49,6 +49,14 @@ function loadTotalEarned() {
         console.log('Could not parse state', e);
       }
     });
+  } else {
+    fetch('/api/state')
+      .then((r) => r.json())
+      .then((stateObj) => {
+        const total = stateObj.total_earned || 0;
+        document.getElementById('totalEarned').textContent = 'Jami: ' + total.toLocaleString('uz-UZ') + " so'm";
+      })
+      .catch(() => {});
   }
 }
 
@@ -61,27 +69,43 @@ function loadSettings() {
       hydrateAdminForm(normalized);
     });
   } else {
-    hydrateAdminForm(stored);
+    fetch('/api/config')
+      .then((r) => r.json())
+      .then((cfg) => {
+        const normalized = _normalize_front_settings(cfg);
+        hydrateAdminForm(normalized);
+      })
+      .catch(() => hydrateAdminForm(stored));
   }
 }
 
 function _normalize_front_settings(settings) {
   if (!settings) return {};
+  let services = settings.services ?? settings.service_list ?? [];
+  if (!Array.isArray(services) && services && typeof services === 'object') {
+    services = Object.entries(services).map(([name, cfg]) => ({ name, ...(cfg || {}) }));
+  }
   return {
     pin: settings.pin ?? settings.PIN ?? '1234',
+    pin2: settings.pin2 ?? settings.pin_alt ?? settings.admin_pin_alt ?? settings.pinAlt ?? '5678',
     buttonCount: BUTTON_COUNT,
     showIcons: settings.showIcons ?? settings.show_icons ?? true,
     freePause: parseInt(settings.freePause ?? settings.free_pause ?? settings.pause?.freeSeconds ?? 5) || 5,
     paidPause: parseInt(settings.paidPause ?? settings.paid_pause ?? settings.pause?.paidSecondsPer5000 ?? 120) || 120,
-    services: settings.services ?? settings.service_list ?? []
+    services,
+    bonusPercent: parseInt(settings.bonusPercent ?? settings.bonus?.percent ?? 0) || 0,
+    bonusThreshold: parseInt(settings.bonusThreshold ?? settings.bonus?.threshold ?? 0) || 0,
   };
 }
 
 function hydrateAdminForm(settings) {
   document.getElementById('adminPin').value = settings.pin || '1234';
+  document.getElementById('adminPin2').value = settings.pin2 || '5678';
   document.getElementById('toggleIcons').checked = settings.showIcons !== false;
   document.getElementById('freePause').value = settings.freePause || 5;
   document.getElementById('paidPause').value = settings.paidPause || 120;
+  document.getElementById('bonusPercent').value = settings.bonusPercent || 0;
+  document.getElementById('bonusThreshold').value = settings.bonusThreshold || 0;
   
   renderServiceConfigList(settings.services || []);
 }
@@ -186,6 +210,15 @@ function setupEventListeners() {
     document.getElementById('adminPin').value = kbdInput;
     updateKeyboardDisplay();
   });
+  document.getElementById('adminPin2').addEventListener('focus', () => {
+    activeInput = document.getElementById('adminPin2');
+    updateKeyboardDisplay();
+  });
+  document.getElementById('adminPin2').addEventListener('input', () => {
+    const val = document.getElementById('adminPin2').value.slice(0, 6);
+    document.getElementById('adminPin2').value = val;
+    updateKeyboardDisplay();
+  });
 
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && (e.key === 'r' || e.key === 'R')) {
@@ -225,6 +258,10 @@ function updateKeyboardDisplay() {
     const value = activeInput.value || '';
     const masked = Array(6).fill('○').map((c, i) => (i < value.length ? '●' : '○')).join('');
     display.textContent = `PIN: ${masked}`;
+  } else if (activeInput.id === 'adminPin2') {
+    const value = activeInput.value || '';
+    const masked = Array(6).fill('○').map((c, i) => (i < value.length ? '●' : '○')).join('');
+    display.textContent = `PIN 2: ${masked}`;
   } else {
     const preview = (activeInput.value || '').toString();
     display.textContent = `${activeInput.placeholder || 'Matn'}: ${preview}`;
@@ -252,7 +289,7 @@ function handleVirtualKey(key) {
     if (activeInput.type === 'number' && !/^[0-9.]$/.test(key)) {
       return;
     }
-    if (activeInput.id === 'adminPin' && activeInput.value.length >= 6) {
+    if ((activeInput.id === 'adminPin' || activeInput.id === 'adminPin2') && activeInput.value.length >= 6) {
       return;
     }
     activeInput.value += key;
@@ -284,8 +321,11 @@ function collectServices() {
 function saveSettings() {
   const freePause = parseInt(document.getElementById('freePause').value) || 5;
   const paidPause = parseInt(document.getElementById('paidPause').value) || 120;
+  const bonusPercent = parseInt(document.getElementById('bonusPercent').value) || 0;
+  const bonusThreshold = parseInt(document.getElementById('bonusThreshold').value) || 0;
   const settings = {
     pin: document.getElementById('adminPin').value || '1234',
+    pin2: document.getElementById('adminPin2').value || '5678',
     buttonCount: BUTTON_COUNT,
     totalButtons: BUTTON_COUNT,
     showIcons: document.getElementById('toggleIcons').checked,
@@ -295,13 +335,28 @@ function saveSettings() {
     paidPause,
     paid_pause: paidPause,
     pause: { freeSeconds: freePause, paidSecondsPer5000: paidPause },
-    services: collectServices()
+    services: collectServices(),
+    bonusPercent,
+    bonusThreshold,
+    bonus: { percent: bonusPercent, threshold: bonusThreshold },
   };
   
   localStorage.setItem('moyka.settings.v1', JSON.stringify(settings));
   
   if (bridge && bridge.updateFrontSettings) {
     bridge.updateFrontSettings(settings);
+  } else {
+    fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        admin_pin: settings.pin,
+        admin_pin_alt: settings.pin2,
+        bonus: settings.bonus,
+        pause: settings.pause,
+        services: settings.services,
+      }),
+    }).catch(() => {});
   }
   
   const status = document.getElementById('adminStatus');
@@ -318,6 +373,7 @@ function resetToDefaults() {
   if (confirm('Barcha sozlamalar standartga qaytadi. Rostmi?')) {
     const defaults = {
       pin: '1234',
+      pin2: '5678',
       buttonCount: BUTTON_COUNT,
       totalButtons: BUTTON_COUNT,
       showIcons: true,
@@ -325,14 +381,17 @@ function resetToDefaults() {
       freePause: 5,
       paidPause: 120,
       pause: { freeSeconds: 5, paidSecondsPer5000: 120 },
+      bonusPercent: 0,
+      bonusThreshold: 0,
+      bonus: { percent: 0, threshold: 0 },
       services: [
-        { name: 'SUV', icon: 'suv.png', secondsPer5000: 120, theme: 'suv', active: true },
-        { name: 'OSMOS', icon: 'osmos.png', secondsPer5000: 120, theme: 'osmos', active: true },
-        { name: 'AKTIV', icon: 'aktiv.png', secondsPer5000: 120, theme: 'aktiv', active: true },
-        { name: 'PENA', icon: 'pena.png', secondsPer5000: 120, theme: 'pena', active: true },
-        { name: 'NANO', icon: 'nano.png', secondsPer5000: 120, theme: 'nano', active: true },
-        { name: 'VOSK', icon: 'vosk.png', secondsPer5000: 120, theme: 'vosk', active: true },
-        { name: 'QURITISH', icon: 'quritish.png', secondsPer5000: 120, theme: 'quritish', active: true }
+        { name: 'XIZMAT1', label: 'Xizmat 1', icon: 'suv.png', secondsPer5000: 120, theme: 'suv', active: true },
+        { name: 'XIZMAT2', label: 'Xizmat 2', icon: 'osmos.png', secondsPer5000: 120, theme: 'osmos', active: true },
+        { name: 'XIZMAT3', label: 'Xizmat 3', icon: 'aktiv.png', secondsPer5000: 120, theme: 'aktiv', active: true },
+        { name: 'XIZMAT4', label: 'Xizmat 4', icon: 'pena.png', secondsPer5000: 120, theme: 'pena', active: true },
+        { name: 'XIZMAT5', label: 'Xizmat 5', icon: 'nano.png', secondsPer5000: 120, theme: 'nano', active: true },
+        { name: 'XIZMAT6', label: 'Xizmat 6', icon: 'vosk.png', secondsPer5000: 120, theme: 'vosk', active: true },
+        { name: 'XIZMAT7', label: 'Xizmat 7', icon: 'quritish.png', secondsPer5000: 120, theme: 'quritish', active: true }
       ]
     };
     

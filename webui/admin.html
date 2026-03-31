@@ -33,6 +33,10 @@
                   <span class="field-label">PIN</span>
                   <input id="adminPin" type="password" maxlength="6" autocomplete="off" />
                 </label>
+                <label class="field compact">
+                  <span class="field-label">PIN 2</span>
+                  <input id="adminPin2" type="password" maxlength="6" autocomplete="off" />
+                </label>
                 <label class="field compact switch-field">
                   <span class="field-label">Iconlar</span>
                   <input id="toggleIcons" type="checkbox" checked />
@@ -44,6 +48,17 @@
                 <label class="field compact">
                   <span class="field-label">Pauza 5000 so'm (s)</span>
                   <input id="paidPause" type="number" min="1" value="120" />
+                </label>
+              </div>
+
+              <div class="settings-row">
+                <label class="field compact">
+                  <span class="field-label">Bonus %</span>
+                  <input id="bonusPercent" type="number" min="0" value="0" />
+                </label>
+                <label class="field compact">
+                  <span class="field-label">Bonus threshold (so'm)</span>
+                  <input id="bonusThreshold" type="number" min="0" value="0" />
                 </label>
               </div>
             </div>

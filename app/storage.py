@@ -6,41 +6,82 @@ from app.settings import CONFIG_FILE, DEFAULT_CONFIG
 SESSIONS_FILE = os.path.join(os.path.dirname(CONFIG_FILE), "sessions.json")
 
 
+def _deepcopy_default():
+    """Return a deep copy of DEFAULT_CONFIG without mutating the source."""
+    return json.loads(json.dumps(DEFAULT_CONFIG))
+
+
+def _migrate_service_fields(data):
+    # Legacy names -> yangi XIZMAT nomlari
+    legacy_order = ["KO'PIK", "SUV", "SHAMPUN", "VOSK", "PENA", "OSMOS", "QURITISH"]
+    new_order = ["XIZMAT1", "XIZMAT2", "XIZMAT3", "XIZMAT4", "XIZMAT5", "XIZMAT6", "XIZMAT7"]
+    if any(key in data.get("services", {}) for key in legacy_order) and all(k not in data.get("services", {}) for k in new_order):
+        migrated = {}
+        for legacy, new in zip(legacy_order, new_order):
+            if legacy in data["services"]:
+                migrated[new] = data["services"].get(legacy, {})
+        data["services"] = migrated
+
+    # migrate old relay_bit to gpio_out if present
+    for svc_name, svc_default in DEFAULT_CONFIG["services"].items():
+        if svc_name not in data["services"]:
+            data["services"][svc_name] = dict(svc_default)
+            continue
+        svc_cfg = data["services"][svc_name]
+        if "gpio_out" not in svc_cfg:
+            if "relay_bit" in svc_cfg:
+                svc_cfg["gpio_out"] = svc_cfg["relay_bit"]
+            else:
+                svc_cfg["gpio_out"] = svc_default.get("gpio_out")
+        for k, v in svc_default.items():
+            if k not in svc_cfg:
+                svc_cfg[k] = v
+
+
 def load_config():
+    data = None
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-
-            for key, val in DEFAULT_CONFIG.items():
-                if key not in data:
-                    data[key] = val
-
-            if "shift_register" not in data:
-                data["shift_register"] = DEFAULT_CONFIG["shift_register"]
-
-            for svc_name, svc_default in DEFAULT_CONFIG["services"].items():
-                if svc_name not in data["services"]:
-                    data["services"][svc_name] = dict(svc_default)
-                    continue
-                for k, v in svc_default.items():
-                    if k not in data["services"][svc_name]:
-                        data["services"][svc_name][k] = v
-            
-            # Remove "sessions" key if it exists (migration from old format)
-            if "sessions" in data:
-                del data["sessions"]
-            
-            return data
         except Exception:
-            pass
+            data = None
 
-    return json.loads(json.dumps(DEFAULT_CONFIG))
+    if data is None:
+        return _deepcopy_default()
+
+    # fill missing top-level keys
+    for key, val in DEFAULT_CONFIG.items():
+        if key not in data:
+            data[key] = val
+
+    if "services" not in data or not isinstance(data["services"], dict):
+        data["services"] = _deepcopy_default()["services"]
+
+    _migrate_service_fields(data)
+
+    # Ensure bonus structure exists
+    if "bonus" not in data:
+        data["bonus"] = {"percent": 0, "threshold": 0}
+    else:
+        data["bonus"].setdefault("percent", 0)
+        data["bonus"].setdefault("threshold", 0)
+
+    if "pause" not in data:
+        data["pause"] = {"freeSeconds": 5, "paidSecondsPer5000": 120}
+    else:
+        data["pause"].setdefault("freeSeconds", 5)
+        data["pause"].setdefault("paidSecondsPer5000", 120)
+
+    # drop legacy keys
+    data.pop("sessions", None)
+    data.pop("shift_register", None)
+
+    return data
 
 
 def save_config(cfg):
     try:
-        # Ensure sessions are not saved in config
         cfg_copy = dict(cfg)
         cfg_copy.pop("sessions", None)
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
