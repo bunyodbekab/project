@@ -19,7 +19,6 @@ DEFAULT_CONFIG = {
     "moyka_name": "MOYKA",
     "admin_pin": "1234",
     "total_earned": 0,
-    "sessions": [],
     "shift_register": {
         "data_pin": 227,
         "clock_pin": 75,

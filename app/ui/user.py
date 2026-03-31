@@ -11,7 +11,7 @@ from PyQt5.QtGui import QTransform
 
 from app.gpio_controller import GPIOController
 from app.settings import BASE_DIR, BLINK_WARN, ICONS_DIR, INPUT_GPIO_TO_SERVICE, LOW_BALANCE
-from app.storage import load_config, save_config
+from app.storage import load_config, save_config, add_session
 
 
 class WebBridge(QObject):
@@ -576,6 +576,7 @@ class MoykaUI(QWidget):
             "pauseIconUrl": self._icon_url("\u26d4.png"),
             "pauseState": pause_state,
             "canAddMoney": mode == "idle",
+            "total_earned": self.cfg.get("total_earned", 0),
         }
 
     def _state_json(self):
@@ -704,7 +705,7 @@ class MoykaUI(QWidget):
         self.service_timer.stop()
         if self.session_earned > 0:
             self.cfg["total_earned"] = self.cfg.get("total_earned", 0) + self.session_earned
-            self.cfg.setdefault("sessions", []).append(
+            add_session(
                 {
                     "service": "PAUSE",
                     "service_name": "PAUZA",
@@ -737,7 +738,7 @@ class MoykaUI(QWidget):
         if self.active_service and self.session_earned > 0:
             service_display = self.cfg["services"].get(self.active_service, {}).get("display_name", self.active_service)
             self.cfg["total_earned"] = self.cfg.get("total_earned", 0) + self.session_earned
-            self.cfg.setdefault("sessions", []).append(
+            add_session(
                 {
                     "service": self.active_service,
                     "service_name": service_display,
@@ -771,7 +772,7 @@ class MoykaUI(QWidget):
         self._check_blink()
 
     def _check_blink(self):
-        should = self.balance < LOW_BALANCE or ((self.is_running or self.pause_mode) and self.remaining_sec <= BLINK_WARN)
+        should = (self.is_running or self.pause_mode) and (self.balance < LOW_BALANCE or self.remaining_sec <= BLINK_WARN)
         if should and not self.blink_timer.isActive():
             self.blink_timer.start()
             self._emit_state()

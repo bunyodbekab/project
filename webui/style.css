@@ -91,7 +91,7 @@ body:has(#adminPageContainer) #rotator {
   letter-spacing: 0.01em;
   line-height: 0.92;
   color: #ffffff;
-  font-size: clamp(120px, 16.2vw, 260px);
+  font-size: clamp(120px, 11.2vw, 260px);
   text-shadow: 0 4px 12px rgba(76, 136, 255, 0.15);
 }
 
