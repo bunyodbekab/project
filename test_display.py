@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor
 
 app = QApplication(sys.argv)
 
@@ -18,4 +18,4 @@ window.setStyleSheet("background: #081433;")
 window.showFullScreen()
 
 print("Window shown. Press Ctrl+C to exit.")
-sys.exit(app.exec_())
+sys.exit(app.exec())

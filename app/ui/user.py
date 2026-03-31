@@ -5,11 +5,11 @@ import threading
 from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
-from PyQt5.QtCore import QObject, QTimer, QUrl, Qt, pyqtSignal, pyqtSlot, QRectF
-from PyQt5.QtWebChannel import QWebChannel
-from PyQt5.QtWebEngineWidgets import QWebEngineView
-from PyQt5.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget, QGraphicsView, QGraphicsScene, QFrame
-from PyQt5.QtGui import QTransform
+from PyQt6.QtCore import QObject, QTimer, QUrl, Qt, pyqtSignal, pyqtSlot, QRectF
+from PyQt6.QtWebChannel import QWebChannel
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget, QGraphicsView, QGraphicsScene, QFrame
+from PyQt6.QtGui import QTransform
 
 from app.gpio_controller import GPIOController
 from app.settings import BASE_DIR, BLINK_WARN, ICONS_DIR, INPUT_GPIO_TO_SERVICE, LOW_BALANCE

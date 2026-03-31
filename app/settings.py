@@ -1,5 +1,5 @@
 import os
-from PyQt5.QtGui import QFont, QFontDatabase
+from PyQt6.QtGui import QFont, QFontDatabase
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CONFIG_FILE = os.path.join(BASE_DIR, "config.json")

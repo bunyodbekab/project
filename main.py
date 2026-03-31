@@ -46,7 +46,7 @@ def main():
 
     _enable_remote_debugging()
 
-    from PyQt5.QtWidgets import QApplication
+    from PyQt6.QtWidgets import QApplication
 
     from app.settings import app_font, register_montserrat_fonts
     from app.ui.user import RotatedWindow
@@ -57,7 +57,7 @@ def main():
 
     window = RotatedWindow()
     window.show_ui()
-    return app.exec_()
+    return app.exec()
 
 
 if __name__ == "__main__":
