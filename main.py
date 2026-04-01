@@ -39,12 +39,24 @@ def _enable_remote_debugging():
     print(f"[WEBENGINE] Remote debugging: http://127.0.0.1:{port}")
 
 
+def _force_webengine_scale():
+    # Prevent QtWebEngine from inheriting OS 125% scaling; keep UI at 1:1.
+    flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS")
+    if not flags:
+        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--force-device-scale-factor=1.0"
+    os.environ.setdefault("QT_SCALE_FACTOR", "1")
+    os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "0")
+    os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "0")
+    os.environ.setdefault("QT_SCREEN_SCALE_FACTORS", "1")
+
+
 def main():
     delegated = _ensure_venv_runtime()
     if delegated is not None:
         return delegated
 
     _enable_remote_debugging()
+    _force_webengine_scale()
 
     from PyQt6.QtWidgets import QApplication
 

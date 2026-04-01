@@ -1,46 +1,67 @@
 {
   "services": {
     "XIZMAT1": {
-      "display_name": "XIZMAT 1",
-      "price_per_sec": 200,
-      "duration": 60,
-      "gpio_out": 227
+      "display_name": "SUV",
+      "price_per_sec": 42,
+      "duration": 120,
+      "gpio_out": 227,
+      "icon": "suv.png",
+      "theme": "suv",
+      "active": true
     },
     "XIZMAT2": {
-      "display_name": "XIZMAT 2",
-      "price_per_sec": 150,
-      "duration": 100,
-      "gpio_out": 75
+      "display_name": "XIZMAT2",
+      "price_per_sec": 42,
+      "duration": 120,
+      "gpio_out": 75,
+      "icon": "osmos.png",
+      "theme": "osmos",
+      "active": true
     },
     "XIZMAT3": {
-      "display_name": "XIZMAT 3",
-      "price_per_sec": 250,
-      "duration": 80,
-      "gpio_out": 79
+      "display_name": "XIZMAT3",
+      "price_per_sec": 42,
+      "duration": 120,
+      "gpio_out": 79,
+      "icon": "aktiv.png",
+      "theme": "aktiv",
+      "active": true
     },
     "XIZMAT4": {
-      "display_name": "XIZMAT 4",
-      "price_per_sec": 350,
-      "duration": 70,
-      "gpio_out": 78
+      "display_name": "XIZMAT4",
+      "price_per_sec": 42,
+      "duration": 120,
+      "gpio_out": 78,
+      "icon": "pena.png",
+      "theme": "pena",
+      "active": true
     },
     "XIZMAT5": {
-      "display_name": "XIZMAT 5",
-      "price_per_sec": 300,
-      "duration": 50,
-      "gpio_out": 71
+      "display_name": "XIZMAT5",
+      "price_per_sec": 42,
+      "duration": 120,
+      "gpio_out": 71,
+      "icon": "nano.png",
+      "theme": "nano",
+      "active": true
     },
     "XIZMAT6": {
-      "display_name": "XIZMAT 6",
-      "price_per_sec": 200,
-      "duration": 90,
-      "gpio_out": 233
+      "display_name": "XIZMAT6",
+      "price_per_sec": 42,
+      "duration": 120,
+      "gpio_out": 233,
+      "icon": "vosk.png",
+      "theme": "vosk",
+      "active": true
     },
     "XIZMAT7": {
-      "display_name": "XIZMAT 7",
-      "price_per_sec": 100,
+      "display_name": "XIZMAT7",
+      "price_per_sec": 42,
       "duration": 120,
-      "gpio_out": 74
+      "gpio_out": 74,
+      "icon": "quritish.png",
+      "theme": "quritish",
+      "active": false
     }
   },
   "moyka_name": "MOYKA",
@@ -50,9 +71,10 @@
     "percent": 0,
     "threshold": 0
   },
-  "total_earned": 262919,
+  "total_earned": 269079,
   "pause": {
     "freeSeconds": 5,
     "paidSecondsPer5000": 120
-  }
+  },
+  "show_icons": true
 }

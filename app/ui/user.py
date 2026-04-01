@@ -2,6 +2,7 @@ import json
 import math
 import os
 import threading
+import time
 from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
@@ -12,7 +13,7 @@ from PyQt6.QtWidgets import QApplication, QStackedWidget, QVBoxLayout, QWidget, 
 from PyQt6.QtGui import QTransform
 
 from app.gpio_controller import GPIOController
-from app.settings import BASE_DIR, BLINK_WARN, ICONS_DIR, INPUT_GPIO_TO_SERVICE, LOW_BALANCE
+from app.settings import BASE_DIR, BLINK_WARN, ICONS_DIR, INPUT_GPIO_TO_SERVICE, LOW_BALANCE, DEBUG, DEFAULT_CONFIG
 from app.storage import load_config, save_config, add_session
 
 
@@ -51,6 +52,11 @@ class WebBridge(QObject):
     def updateFrontSettings(self, settings):
         self.ui.update_front_settings(settings)
 
+    @pyqtSlot(result=str)
+    def resetConfigToDefaults(self):
+        self.ui.reset_config_to_defaults()
+        return json.dumps(self.ui._settings_payload(), ensure_ascii=False)
+
 
 class RotatedContainer(QGraphicsView):
     def __init__(self, inner_widget, angle_deg, parent=None, fallback_size=None):
@@ -61,9 +67,9 @@ class RotatedContainer(QGraphicsView):
 
         self.setStyleSheet("background: transparent; border: none;")
         self.setFrameShape(QFrame.NoFrame)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setAlignment(Qt.AlignCenter)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self._scene = QGraphicsScene(self)
         self._proxy = self._scene.addWidget(inner_widget)
@@ -132,9 +138,13 @@ class MoykaUI(QWidget):
 
         self._pause_hold_count = 0
         self._pause_hold_timer = QTimer(self)
-        self._pause_hold_timer.setInterval(1000)
+        self._pause_hold_timer.setSingleShot(True)
+        self._pause_hold_timer.setInterval(2000)  # long-press threshold (ms)
         self._pause_hold_timer.timeout.connect(self._pause_hold_tick)
         self._stop_hold_source = None
+        self._stop_hold_started = None
+        self._pending_pin_modal = False
+        self.web_ready = False
 
         self.service_timer = QTimer(self)
         self.service_timer.setInterval(1000)
@@ -164,7 +174,8 @@ class MoykaUI(QWidget):
         self._web_page.setFixedSize(self.w, self.h)
 
         self.web_view = QWebEngineView(self._web_page)
-        self.web_view.setContextMenuPolicy(Qt.NoContextMenu)
+        self.web_view.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+        self.web_view.setZoomFactor(1.0)  # avoid OS DPI scaling skew in WebEngine
         web_layout.addWidget(self.web_view)
 
         self.bridge = WebBridge(self)
@@ -182,56 +193,107 @@ class MoykaUI(QWidget):
         self._rebuild_front_services()
         self._start_http_server()
 
+    def _deepcopy_default_config(self):
+        return json.loads(json.dumps(DEFAULT_CONFIG))
+
+    def reset_config_to_defaults(self):
+        self.cfg = self._deepcopy_default_config()
+        self.front_settings = None
+        save_config(self.cfg)
+        self._rebuild_front_services()
+        self._emit_state()
+
     def _normalize_front_settings(self, raw):
         if not isinstance(raw, dict):
             return None
 
-        services = raw.get("services") or []
+        services_raw = raw.get("services") or []
+        if isinstance(services_raw, dict):
+            services_raw = [{"name": name, **(svc or {})} for name, svc in services_raw.items()]
+        if not isinstance(services_raw, list):
+            services_raw = []
+
         norm_services = []
-        for idx, svc in enumerate(services):
-            seconds = int(svc.get("secondsPer5000") or svc.get("seconds_per_5000") or 60)
-            seconds = max(1, seconds)
-            key_val = svc.get("key") or svc.get("name") or f"service-{idx+1}"
-            label_val = (
-                svc.get("label")
-                or svc.get("display_name")
-                or svc.get("name")
-                or svc.get("key")
-                or f"Tugma {idx+1}"
+        seen = set()
+        for idx, svc in enumerate(services_raw):
+            if not isinstance(svc, dict):
+                continue
+
+            key_val = str(svc.get("name") or svc.get("key") or f"XIZMAT{idx + 1}")
+            if key_val in seen:
+                continue
+            seen.add(key_val)
+
+            cfg_svc = self.cfg.get("services", {}).get(key_val, {})
+            price_per_sec = svc.get("price_per_sec") or svc.get("pricePerSec") or cfg_svc.get("price_per_sec", 0)
+            sec_from_price = None
+            try:
+                if price_per_sec:
+                    sec_from_price = math.ceil(5000 / max(1, int(price_per_sec)))
+            except Exception:
+                sec_from_price = None
+
+            seconds = max(
+                1,
+                int(
+                    svc.get("secondsPer5000")
+                    or svc.get("seconds_per_5000")
+                    or sec_from_price
+                    or svc.get("duration")
+                    or cfg_svc.get("duration", 60)
+                ),
             )
+
             norm_services.append(
                 {
                     "key": key_val,
-                    "name": svc.get("name") or key_val,
-                    "label": label_val,
-                    "theme": svc.get("theme") or "suv",
-                    "icon": svc.get("icon") or "",
-                    "iconUrl": svc.get("iconUrl") or "",
-                    "showIcon": svc.get("showIcon", True),
-                    "active": svc.get("active", True),
+                    "name": key_val,
+                    "label": str(svc.get("label") or svc.get("display_name") or cfg_svc.get("display_name", key_val)),
+                    "theme": str(svc.get("theme") or cfg_svc.get("theme") or "suv"),
+                    "icon": str(svc.get("icon") or svc.get("icon_file") or cfg_svc.get("icon") or ""),
+                    "iconUrl": str(svc.get("iconUrl") or svc.get("icon_url") or ""),
+                    "showIcon": bool(svc.get("showIcon", True)),
+                    "active": bool(svc.get("active", cfg_svc.get("active", True))),
                     "secondsPer5000": seconds,
                 }
             )
 
-        pause_cfg = raw.get("pause") or {}
-        free_sec = max(
-            0,
-            int(
-                pause_cfg.get("freeSeconds")
-                or raw.get("freePause")
-                or raw.get("free_pause")
-                or 0
-            ),
-        )
-        paid_sec = max(
-            1,
-            int(
-                pause_cfg.get("paidSecondsPer5000")
-                or raw.get("paidPause")
-                or raw.get("paid_pause")
-                or 60
-            ),
-        )
+        for key, cfg_svc in self.cfg.get("services", {}).items():
+            if key in seen:
+                continue
+            seconds = max(1, math.ceil(5000 / max(1, int(cfg_svc.get("price_per_sec", 1)))))
+            norm_services.append(
+                {
+                    "key": key,
+                    "name": key,
+                    "label": str(cfg_svc.get("display_name", key)),
+                    "theme": str(cfg_svc.get("theme", "suv")),
+                    "icon": str(cfg_svc.get("icon", "")),
+                    "iconUrl": "",
+                    "showIcon": True,
+                    "active": bool(cfg_svc.get("active", True)),
+                    "secondsPer5000": seconds,
+                }
+            )
+
+        pause_cfg = raw.get("pause") if isinstance(raw.get("pause"), dict) else {}
+        free_value = pause_cfg.get("freeSeconds")
+        if free_value is None:
+            free_value = raw.get("freePause")
+        if free_value is None:
+            free_value = raw.get("free_pause")
+        if free_value is None:
+            free_value = (self.cfg.get("pause") or {}).get("freeSeconds", 0)
+        paid_value = pause_cfg.get("paidSecondsPer5000")
+        if paid_value is None:
+            paid_value = raw.get("paidPause")
+        if paid_value is None:
+            paid_value = raw.get("paid_pause")
+        if paid_value is None:
+            paid_value = (self.cfg.get("pause") or {}).get("paidSecondsPer5000", 60)
+
+        free_sec = max(0, int(free_value or 0))
+        paid_sec = max(1, int(paid_value or 60))
 
         pin1 = str(raw.get("pin") or self.cfg.get("admin_pin", "1234"))
         pin2 = str(
@@ -255,11 +317,11 @@ class MoykaUI(QWidget):
             or self.cfg.get("bonus", {}).get("threshold", 0)
         )
 
-        total_buttons = 7
+        total_buttons = raw.get("totalButtons") or raw.get("buttonCount") or len(norm_services) or len(self.cfg.get("services", {})) or 1
 
         show_icons = raw.get("showIcons")
         if show_icons is None:
-            show_icons = raw.get("show_icons", True)
+            show_icons = raw.get("show_icons", self.cfg.get("show_icons", True))
 
         return {
             "pin": pin1,
@@ -290,7 +352,7 @@ class MoykaUI(QWidget):
 
         if self.front_settings:
             raw = self.front_settings.get("services", [])
-            total = max(1, self.front_settings.get("totalButtons") or len(raw) or 1)
+            total = max(1, self.front_settings.get("totalButtons") or len(raw) or len(self.cfg.get("services", {})) or 1)
             used = set()
             for svc in raw:
                 if not svc.get("active", True):
@@ -298,14 +360,18 @@ class MoykaUI(QWidget):
                 if len(services) >= total:
                     break
                 hw_key = self._map_to_hw_service(svc, used)
-                front_key = svc.get("key")
-                price_map[front_key] = max(1, math.ceil(5000 / max(1, svc.get("secondsPer5000", 60))))
+                if not hw_key:
+                    continue
+                front_key = svc.get("key") or svc.get("name") or hw_key
+                seconds = max(1, int(svc.get("secondsPer5000", 60)))
+                price_map[front_key] = max(1, math.ceil(5000 / seconds))
+                cfg_svc = self.cfg["services"].get(hw_key, {})
                 services.append(
                     {
                         "front_key": front_key,
-                        "label": svc.get("label") or front_key,
-                        "theme": svc.get("theme") or "suv",
-                        "icon_file": svc.get("icon") or "",
+                        "label": svc.get("label") or cfg_svc.get("display_name", front_key),
+                        "theme": svc.get("theme") or cfg_svc.get("theme", "suv"),
+                        "icon_file": svc.get("icon") or cfg_svc.get("icon", ""),
                         "icon_url": svc.get("iconUrl") or "",
                         "hw_key": hw_key,
                     }
@@ -314,17 +380,16 @@ class MoykaUI(QWidget):
                 if hw_key:
                     hw_to_fk[hw_key] = front_key
         else:
-            legacy_slots = self._build_service_slots()
-            for slot in legacy_slots:
-                key = slot["service_key"]
-                svc_cfg = self.cfg["services"].get(key, {})
+            for key, svc_cfg in self.cfg.get("services", {}).items():
+                if not svc_cfg.get("active", True):
+                    continue
                 price_map[key] = max(1, int(svc_cfg.get("price_per_sec", 1)))
                 services.append(
                     {
                         "front_key": key,
-                        "label": slot["label"],
-                        "theme": slot["theme"],
-                        "icon_file": slot.get("icon_file", ""),
+                        "label": svc_cfg.get("display_name", key),
+                        "theme": svc_cfg.get("theme", "suv"),
+                        "icon_file": svc_cfg.get("icon", ""),
                         "icon_url": "",
                         "hw_key": key,
                     }
@@ -347,68 +412,13 @@ class MoykaUI(QWidget):
             print(f"[MAP] print failed: {e}")
 
     def _map_to_hw_service(self, svc, used):
-        aliases = []
-        label = (svc.get("label") or "").strip()
-        key = (svc.get("key") or svc.get("name") or "").strip()
-        theme = (svc.get("theme") or "").strip().upper()
-        name_field = (svc.get("name") or "").strip()
+        requested = (svc.get("name") or svc.get("key") or "").strip()
+        if requested and requested in self.cfg.get("services", {}) and requested not in used:
+            used.add(requested)
+            return requested
 
-        # Hard map common front labels/keys to backend service names first
-        canonical = {
-            "SUV": "SUV",
-            "OSMOS": "OSMOS",
-            "AKTIV": "KO'PIK",
-            "AKTIV PENA": "KO'PIK",
-            "PENA": "PENA",
-            "NANO": "SHAMPUN",
-            "VOSK": "VOSK",
-            "QURITISH": "QURITISH",
-        }
-        for candidate in (label, key, name_field):
-            c_up = candidate.upper()
-            if c_up in canonical:
-                mapped = canonical[c_up]
-                if mapped in self.cfg["services"] and mapped not in used:
-                    print(f"[MAP] canonical match {candidate} -> {mapped}")
-                    used.add(mapped)
-                    return mapped
-
-        if label:
-            aliases.append(label)
-        if key:
-            aliases.append(key)
-        if name_field:
-            aliases.append(name_field)
-        if theme:
-            aliases.append(theme)
-
-        theme_aliases = {
-            "SUV": ["SUV"],
-            "OSMOS": ["OSMOS"],
-            "AKTIV": ["AKTIV", "KO'PIK", "KOPIK", "FOAM"],
-            "PENA": ["PENA"],
-            "NANO": ["NANO", "SHAMPUN", "QURITISH"],
-            "VOSK": ["VOSK"],
-            "QURITISH": ["QURITISH"],
-        }
-        for alias in theme_aliases.get(theme, []):
-            aliases.append(alias)
-
-        picked = self._pick_service_for_aliases(aliases, used)
-        if picked:
-            print(f"[MAP] alias match {aliases} -> {picked}")
-            used.add(picked)
-            return picked
-
-        for candidate in (name_field, label, key):
-            if candidate and candidate in self.cfg["services"] and candidate not in used:
-                print(f"[MAP] direct name match {candidate}")
-                used.add(candidate)
-                return candidate
-
-        for fallback in self.cfg["services"].keys():
+        for fallback in self.cfg.get("services", {}).keys():
             if fallback not in used:
-                print(f"[MAP] fallback -> {fallback}")
                 used.add(fallback)
                 return fallback
 
@@ -422,6 +432,7 @@ class MoykaUI(QWidget):
         # sync PIN to backend config for admin overlay
         self.cfg["admin_pin"] = norm.get("pin", self.cfg.get("admin_pin", "1234"))
         self.cfg["admin_pin_alt"] = norm.get("pin2", self.cfg.get("admin_pin_alt", "5678"))
+        self.cfg["show_icons"] = bool(norm.get("showIcons", self.cfg.get("show_icons", True)))
         bonus_cfg = norm.get("bonus", {}) or {}
         self.cfg["bonus"] = {
             "percent": int(bonus_cfg.get("percent", 0) or 0),
@@ -433,7 +444,7 @@ class MoykaUI(QWidget):
             "paidSecondsPer5000": int(pause_cfg.get("paidSecondsPer5000", 60) or 60),
         }
 
-        # persist service settings (label -> display_name, secondsPer5000 -> price_per_sec)
+        # Persist service settings while keeping hardware mapping fields (gpio_out) unchanged.
         for svc in norm.get("services", []):
             key = svc.get("name") or svc.get("key")
             if not key or key not in self.cfg["services"]:
@@ -441,10 +452,15 @@ class MoykaUI(QWidget):
             seconds = max(1, int(svc.get("secondsPer5000", 60)))
             price_per_sec = max(1, math.ceil(5000 / seconds))
             display_name = svc.get("label") or svc.get("display_name") or self.cfg["services"][key].get("display_name", key)
-            self.cfg["services"][key]["price_per_sec"] = price_per_sec
-            self.cfg["services"][key]["duration"] = max(1, int(svc.get("duration", seconds)))
-            self.cfg["services"][key]["display_name"] = display_name
-            # keep gpio_out untouched
+            target = self.cfg["services"][key]
+            target["price_per_sec"] = price_per_sec
+            target["duration"] = max(1, int(svc.get("duration", seconds)))
+            target["display_name"] = display_name
+            if "icon" in svc:
+                target["icon"] = str(svc.get("icon") or target.get("icon", ""))
+            if "theme" in svc:
+                target["theme"] = str(svc.get("theme") or target.get("theme", "suv"))
+            target["active"] = bool(svc.get("active", target.get("active", True)))
 
         save_config(self.cfg)
         self._rebuild_front_services()
@@ -453,7 +469,21 @@ class MoykaUI(QWidget):
     def _on_web_loaded(self, ok):
         if not ok:
             print("Web UI yuklanmadi: webui/index.html topilmadi yoki xato bor.")
+        self.web_ready = bool(ok)
+        if self.web_ready and self._pending_pin_modal:
+            self._open_pin_modal()
+            self._pending_pin_modal = False
         self._emit_state()
+
+    def _open_pin_modal(self):
+        if not self.web_ready:
+            self._pending_pin_modal = True
+            return
+        try:
+            page = self.web_view.page()
+            page.runJavaScript("window.openPinModal && window.openPinModal();")
+        except Exception as e:
+            print(f"[PIN] failed to open modal: {e}")
 
     def _icon_url(self, icon_file):
         if not icon_file:
@@ -462,103 +492,6 @@ class MoykaUI(QWidget):
         if not os.path.exists(icon_path):
             return ""
         return QUrl.fromLocalFile(icon_path).toString()
-
-    def _match_services_for_slots(self, slots):
-        by_display = {k: v.get("display_name", k).upper() for k, v in self.cfg["services"].items()}
-        used = set()
-        matched = []
-
-        for slot in slots:
-            target = slot.upper()
-            found = None
-            for key, disp in by_display.items():
-                if key in used:
-                    continue
-                if target in disp:
-                    found = key
-                    break
-            if found is None:
-                for key in self.cfg["services"].keys():
-                    if key not in used:
-                        found = key
-                        break
-            if found:
-                used.add(found)
-                matched.append(found)
-        return matched
-
-    def _pick_service_for_aliases(self, aliases, used):
-        by_display = {k: v.get("display_name", k).upper() for k, v in self.cfg["services"].items()}
-
-        for alias in aliases:
-            alias_upper = alias.upper()
-            for key, disp in by_display.items():
-                if key in used:
-                    continue
-                if alias_upper in disp or alias_upper in key.upper():
-                    return key
-
-        for key in self.cfg["services"].keys():
-            if key not in used:
-                return key
-        return None
-
-    def _build_service_slots(self):
-        slot_defs = [
-            {
-                "label": "SUV",
-                "theme": "suv",
-                "icon_file": "suv.png",
-                "aliases": ["SUV"],
-            },
-            {
-                "label": "OSMOS",
-                "theme": "osmos",
-                "icon_file": "osmos.png",
-                "aliases": ["OSMOS"],
-            },
-            {
-                "label": "AKTIV\nPENA",
-                "theme": "aktiv",
-                "icon_file": "aktiv.png",
-                "aliases": ["AKTIV PENA", "AKTIV", "KO'PIK", "KOPIK", "FOAM"],
-            },
-            {
-                "label": "PENA",
-                "theme": "pena",
-                "icon_file": "pena.png",
-                "aliases": ["PENA"],
-            },
-            {
-                "label": "NANO",
-                "theme": "nano",
-                "icon_file": "nano.png",
-                "aliases": ["NANO", "SHAMPUN", "QURITISH"],
-            },
-            {
-                "label": "VOSK",
-                "theme": "vosk",
-                "icon_file": "vosk.png",
-                "aliases": ["VOSK"],
-            },
-        ]
-
-        used = set()
-        slots = []
-        for slot in slot_defs:
-            picked = self._pick_service_for_aliases(slot["aliases"], used)
-            if not picked:
-                continue
-            used.add(picked)
-            slots.append(
-                {
-                    "service_key": picked,
-                    "label": slot["label"],
-                    "theme": slot["theme"],
-                    "icon_file": slot["icon_file"],
-                }
-            )
-        return slots
 
     def _display_title_for_service(self, service_key):
         for slot in self.front_services:
@@ -616,8 +549,10 @@ class MoykaUI(QWidget):
             services.append(
                 {
                     "key": slot["front_key"],
+                    "name": slot["front_key"],
                     "label": slot["label"],
                     "theme": slot["theme"],
+                    "icon": slot.get("icon_file", ""),
                     "iconUrl": slot.get("icon_url") or self._icon_url(slot.get("icon_file")),
                 }
             )
@@ -636,22 +571,31 @@ class MoykaUI(QWidget):
             "total_earned": self.cfg.get("total_earned", 0),
             "admin_pins": [self.cfg.get("admin_pin", "1234"), self.cfg.get("admin_pin_alt", "5678")],
             "bonus": self.cfg.get("bonus", {}),
+            "debug": bool(DEBUG),
         }
 
     def _settings_payload(self):
         return {
             "pin": self.cfg.get("admin_pin", "1234"),
             "pin2": self.cfg.get("admin_pin_alt", "5678"),
+            "showIcons": bool(self.cfg.get("show_icons", True)),
+            "show_icons": bool(self.cfg.get("show_icons", True)),
             "bonus": self.cfg.get("bonus", {}),
             "pause": self.cfg.get("pause", {}),
+            "totalButtons": len(self.cfg.get("services", {})),
             "services": [
                 {
                     "name": key,
+                    "key": key,
+                    "label": svc.get("display_name", key),
                     "display_name": svc.get("display_name", key),
                     "price_per_sec": svc.get("price_per_sec", 1),
                     "secondsPer5000": max(1, math.ceil(5000 / max(1, svc.get("price_per_sec", 1)))),
                     "duration": svc.get("duration", 60),
                     "gpio_out": svc.get("gpio_out"),
+                    "icon": svc.get("icon", ""),
+                    "theme": svc.get("theme", "suv"),
+                    "active": bool(svc.get("active", True)),
                 }
                 for key, svc in self.cfg.get("services", {}).items()
             ],
@@ -726,13 +670,19 @@ class MoykaUI(QWidget):
 
     def _on_stop_pressed(self, source="touch"):
         self._stop_hold_source = source
-        self._pause_hold_count = 0
+        self._stop_hold_started = time.monotonic()
         self._pause_hold_timer.start()
         if self.is_running:
             self._stop_service(manual_pause=True)
 
     def _on_stop_released(self, source="touch"):
         self._pause_hold_timer.stop()
+        hold_ms = None
+        if self._stop_hold_started:
+            hold_ms = (time.monotonic() - self._stop_hold_started) * 1000
+        self._stop_hold_started = None
+        if self._stop_hold_source is not None and not self.is_running and hold_ms is not None and hold_ms >= 1900:
+            self._open_pin_modal()
         self._pause_hold_count = 0
         self._stop_hold_source = None
 
@@ -814,13 +764,11 @@ class MoykaUI(QWidget):
         self._check_blink()
 
     def _pause_hold_tick(self):
-        self._pause_hold_count += 1
-        if self._pause_hold_count >= 2:
-            self._pause_hold_timer.stop()
-            if self._stop_hold_source is not None and not self.is_running:
-                # PIN modal now handled by HTML/JS in index.html
-                self._stop_hold_source = None
-                self._pause_hold_count = 0
+        self._pause_hold_timer.stop()
+        if self._stop_hold_source is not None and not self.is_running:
+            # Trigger PIN modal in the WebView when STOP/pause is held
+            self._open_pin_modal()
+            self._stop_hold_source = None
 
     def _stop_service(self, manual_pause=False):
         self.is_running = False
@@ -946,6 +894,9 @@ class MoykaUI(QWidget):
                 return super().do_GET()
 
             def do_POST(self):
+                if self.path.startswith("/api/config/reset"):
+                    ui_ref.reset_config_to_defaults()
+                    return self._send_json({"ok": True, "config": ui_ref.cfg, "settings": ui_ref._settings_payload()})
                 if self.path.startswith("/api/config"):
                     length = int(self.headers.get("Content-Length", "0") or 0)
                     data = {}
@@ -979,6 +930,8 @@ class MoykaUI(QWidget):
             self.cfg["admin_pin"] = str(data.get("admin_pin") or self.cfg.get("admin_pin", "1234"))
         if "admin_pin_alt" in data or "pin2" in data:
             self.cfg["admin_pin_alt"] = str(data.get("admin_pin_alt") or data.get("pin2") or self.cfg.get("admin_pin_alt", "5678"))
+        if "showIcons" in data or "show_icons" in data:
+            self.cfg["show_icons"] = bool(data.get("showIcons", data.get("show_icons", True)))
         if "bonus" in data and isinstance(data["bonus"], dict):
             bonus = data["bonus"]
             self.cfg["bonus"] = {
@@ -1001,7 +954,7 @@ class MoykaUI(QWidget):
             elif isinstance(data["services"], list):
                 for svc in data["services"]:
                     if isinstance(svc, dict):
-                        key = svc.get("name")
+                        key = svc.get("name") or svc.get("key")
                         if key and key in self.cfg["services"]:
                             self._update_service_from_api(key, svc)
         save_config(self.cfg)
@@ -1030,6 +983,12 @@ class MoykaUI(QWidget):
                 target["price_per_sec"] = max(1, math.ceil(5000 / secs))
             except Exception:
                 pass
+        if "icon" in svc:
+            target["icon"] = str(svc.get("icon") or target.get("icon", ""))
+        if "theme" in svc:
+            target["theme"] = str(svc.get("theme") or target.get("theme", "suv"))
+        if "active" in svc:
+            target["active"] = bool(svc.get("active"))
         # do not overwrite gpio_out here
 
 
@@ -1085,5 +1044,5 @@ class RotatedWindow(QWidget):
 
     def keyPressEvent(self, event):
         self.ui.keyPressEvent(event)
-        if event.key() == Qt.Key_Escape:
+        if event.key() == Qt.Key.Key_Escape:
             QApplication.quit()

@@ -22,7 +22,7 @@ def _migrate_service_fields(data):
                 migrated[new] = data["services"].get(legacy, {})
         data["services"] = migrated
 
-    # migrate old relay_bit to gpio_out if present
+    # migrate old relay_bit to gpio_out if present and fill new UI fields
     for svc_name, svc_default in DEFAULT_CONFIG["services"].items():
         if svc_name not in data["services"]:
             data["services"][svc_name] = dict(svc_default)
@@ -72,6 +72,9 @@ def load_config():
     else:
         data["pause"].setdefault("freeSeconds", 5)
         data["pause"].setdefault("paidSecondsPer5000", 120)
+
+    if "show_icons" not in data:
+        data["show_icons"] = True
 
     # drop legacy keys
     data.pop("sessions", None)

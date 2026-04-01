@@ -21,33 +21,19 @@ const pinClear = document.getElementById("pinClear");
 const pinKeys = document.querySelectorAll(".pin-key");
 
 const fallbackPauseIcon = encodeURI("../icons/⛔.png");
-const SETTINGS_KEY = "moyka.settings.v1";
+const DEFAULT_BUTTON_COUNT = 7;
 const ADMIN_HOLD_MS = 2000;
+const ADMIN_MULTI_TAP_WINDOW_MS = 2000;
+const ADMIN_MULTI_TAP_COUNT = 4;
 const INTERACTION_LOCK_MS = 1000;
-
-const DEFAULT_SETTINGS = {
-  pin: "1234",
-  pin2: "5678",
-  buttonCount: 7,
-  showIcons: true,
-  freePause: 5,
-  paidPause: 120,
-  services: [
-    { name: "XIZMAT1", label: "Xizmat 1", icon: "suv.png", secondsPer5000: 120, theme: "suv", active: true },
-    { name: "XIZMAT2", label: "Xizmat 2", icon: "osmos.png", secondsPer5000: 120, theme: "osmos", active: true },
-    { name: "XIZMAT3", label: "Xizmat 3", icon: "aktiv.png", secondsPer5000: 120, theme: "aktiv", active: true },
-    { name: "XIZMAT4", label: "Xizmat 4", icon: "pena.png", secondsPer5000: 120, theme: "pena", active: true },
-    { name: "XIZMAT5", label: "Xizmat 5", icon: "nano.png", secondsPer5000: 120, theme: "nano", active: true },
-    { name: "XIZMAT6", label: "Xizmat 6", icon: "vosk.png", secondsPer5000: 120, theme: "vosk", active: true },
-    { name: "XIZMAT7", label: "Xizmat 7", icon: "quritish.png", secondsPer5000: 120, theme: "quritish", active: true },
-  ],
-};
+let isDebug = false;
 
 let allowedPins = [];
-
-let settings = loadSettings();
+let settings = null; // will be filled from backend/api; defaults only if config is missing
 let stopPressed = false;
 let adminHoldTimer = null;
+let pauseTapCount = 0;
+let pauseTapTimer = null;
 let interactionLocked = false;
 let interactionLockTimer = null;
 let addMoneyLocked = false;
@@ -80,41 +66,101 @@ function safeAddMoney() {
   }
 }
 
-function _normalize_front_settings(settings) {
-  if (!settings) settings = {};
+function _normalize_front_settings(raw) {
+  const s = raw || {};
+  let services = s.services ?? s.service_list ?? s.serviceList ?? [];
+  if (!Array.isArray(services) && services && typeof services === "object") {
+    services = Object.entries(services).map(([name, cfg]) => ({ name, ...(cfg || {}) }));
+  }
+  services = services.map((svc, idx) => {
+    const pricePerSec = Number(svc.price_per_sec || svc.pricePerSec || 0);
+    const secFromPrice = pricePerSec > 0 ? Math.ceil(5000 / Math.max(1, pricePerSec)) : null;
+    const seconds = svc.secondsPer5000 ?? svc.seconds_per_5000 ?? secFromPrice ?? 120;
+    return {
+      ...svc,
+      name: svc.name || svc.key || `XIZMAT${idx + 1}`,
+      key: svc.key || svc.name || `XIZMAT${idx + 1}`,
+      label: svc.label || svc.display_name || svc.name || svc.key || `Xizmat ${idx + 1}`,
+      icon: svc.icon || svc.icon_file || "",
+      iconUrl: svc.iconUrl || svc.icon_url || "",
+      theme: svc.theme || "suv",
+      showIcon: svc.showIcon !== false,
+      active: svc.active !== false,
+      secondsPer5000: Math.max(1, parseInt(seconds || 120, 10)),
+    };
+  });
+
   return {
-    pin: settings.pin ?? settings.PIN ?? "1234",
-    pin2: settings.pin2 ?? settings.pin_alt ?? settings.admin_pin_alt ?? "5678",
-    buttonCount: DEFAULT_SETTINGS.buttonCount,
-    showIcons: settings.showIcons ?? settings.show_icons ?? true,
-    freePause: settings.freePause ?? settings.free_pause ?? settings.pause?.freeSeconds ?? DEFAULT_SETTINGS.freePause,
-    paidPause: settings.paidPause ?? settings.paid_pause ?? settings.pause?.paidSecondsPer5000 ?? DEFAULT_SETTINGS.paidPause,
-    services: settings.services ?? settings.service_list ?? DEFAULT_SETTINGS.services
+    pin: s.pin ?? s.PIN ?? s.admin_pin ?? "",
+    pin2: s.pin2 ?? s.pin_alt ?? s.admin_pin_alt ?? s.pinAlt ?? "",
+    buttonCount: parseInt(s.buttonCount ?? s.totalButtons ?? services.length ?? DEFAULT_BUTTON_COUNT, 10) || DEFAULT_BUTTON_COUNT,
+    showIcons: s.showIcons ?? s.show_icons ?? true,
+    freePause: s.freePause ?? s.free_pause ?? s.pause?.freeSeconds ?? 0,
+    paidPause: s.paidPause ?? s.paid_pause ?? s.pause?.paidSecondsPer5000 ?? 1,
+    services,
   };
 }
 
-function loadSettings() {
-  try {
-    const stored = localStorage.getItem(SETTINGS_KEY);
-    if (stored) {
-      return _normalize_front_settings(JSON.parse(stored));
-    }
-  } catch (e) {
-    console.warn("settings parse error", e);
-  }
-  return _normalize_front_settings(DEFAULT_SETTINGS);
+function _derive_settings_from_state(state) {
+  const services = Array.isArray(state?.services)
+    ? state.services.map((svc, idx) => ({
+        name: svc.name || svc.key || `XIZMAT${idx + 1}`,
+        key: svc.key || svc.name || `XIZMAT${idx + 1}`,
+        label: svc.label || svc.name || svc.key || `Xizmat ${idx + 1}`,
+        iconUrl: svc.iconUrl || "",
+        icon: svc.icon || "",
+        theme: svc.theme || "suv",
+        showIcon: svc.showIcon !== false,
+        active: svc.active !== false,
+        secondsPer5000: svc.secondsPer5000 || 120,
+      }))
+    : [];
+  return {
+    pin: (state?.admin_pins || [])[0] || "",
+    pin2: (state?.admin_pins || [])[1] || "",
+    buttonCount: services.length || DEFAULT_BUTTON_COUNT,
+    showIcons: true,
+    freePause: 0,
+    paidPause: 1,
+    services,
+  };
 }
 
-function saveSettings() {
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  } catch (e) {
-    console.warn("settings save error", e);
+function applySettings(newSettings, source = "unknown") {
+  settings = _normalize_front_settings(newSettings || {});
+  console.log(`[SETTINGS] applied from ${source}`);
+  if (latestState) {
+    render(latestState);
+  }
+}
+
+function refreshSettingsFromBackend() {
+  if (backend && typeof backend.getSettings === "function") {
+    backend.getSettings((payload) => {
+      try {
+        const cfg = parsePayload(payload);
+        if (cfg) {
+          applySettings(cfg, "backend");
+          return;
+        }
+      } catch (e) {
+        console.warn("getSettings parse error", e);
+      }
+      if (latestState) {
+        applySettings(_derive_settings_from_state(latestState), "state-fallback");
+      }
+    });
+    return;
   }
 
-  if (backend && typeof backend.updateFrontSettings === "function") {
-    backend.updateFrontSettings(settings);
-  }
+  fetch("/api/config")
+    .then((r) => r.json())
+    .then((cfg) => applySettings(cfg, "api"))
+    .catch(() => {
+      if (latestState) {
+        applySettings(_derive_settings_from_state(latestState), "state-fallback");
+      }
+    });
 }
 
 function parsePayload(payload) {
@@ -173,6 +219,9 @@ function resolveIconUrl(iconName) {
 }
 
 function mapServicesForRender(state) {
+  if (!settings) {
+    settings = _normalize_front_settings(_derive_settings_from_state(state));
+  }
   const stateServices = Array.isArray(state.services) ? state.services : [];
   const merged = settings.services.map((cfg, idx) => {
     const fromState = stateServices.find((s) => s.key === cfg.name || s.name === cfg.name) || stateServices[idx] || {};
@@ -183,7 +232,7 @@ function mapServicesForRender(state) {
 
     const showIcon = settings.showIcons && cfg.showIcon !== false;
     const iconFile = cfg.icon || fromState.icon;
-    const iconUrl = showIcon ? resolveIconUrl(iconFile) : null;
+    const iconUrl = showIcon ? (fromState.iconUrl || cfg.iconUrl || (iconFile ? resolveIconUrl(iconFile) : null)) : null;
     const active = (cfg.active !== false) && (fromState.active !== false);
 
     return {
@@ -276,6 +325,12 @@ function renderPause(state) {
 
 function render(state) {
   latestState = state;
+  if (!settings) {
+    settings = _normalize_front_settings(_derive_settings_from_state(state));
+  }
+  if (state && typeof state.debug !== "undefined") {
+    isDebug = !!state.debug;
+  }
    if (Array.isArray(state.admin_pins)) {
     allowedPins = state.admin_pins.filter(Boolean);
   }
@@ -286,10 +341,21 @@ function render(state) {
 
 function startAdminHold() {
   clearAdminHold();
+  console.log("[PAUSE] admin hold timer start", ADMIN_HOLD_MS, "ms");
   adminHoldTimer = setTimeout(() => {
-    stopPausePress();
-    openPinModal();
+    handleAdminHoldTrigger(true);
   }, ADMIN_HOLD_MS);
+}
+
+function handleAdminHoldTrigger(fromTimer = false) {
+  console.log("[PAUSE] admin hold trigger", { fromTimer, stopPressed });
+  clearAdminHold();
+  // Even if stopPressed was flipped by mouseup, we still open the modal after timer.
+  stopPressed = false;
+  openPinModal();
+  if (backend && typeof backend.stopReleased === "function") {
+    backend.stopReleased();
+  }
 }
 
 function clearAdminHold() {
@@ -299,11 +365,49 @@ function clearAdminHold() {
   }
 }
 
+function resetPauseTaps() {
+  pauseTapCount = 0;
+  if (pauseTapTimer) {
+    clearTimeout(pauseTapTimer);
+    pauseTapTimer = null;
+  }
+}
+
+function registerPauseTap() {
+  pauseTapCount += 1;
+  console.log("[PAUSE] tap count", pauseTapCount);
+  if (pauseTapTimer) {
+    clearTimeout(pauseTapTimer);
+  }
+  pauseTapTimer = setTimeout(() => {
+    resetPauseTaps();
+    console.log("[PAUSE] tap window expired");
+  }, ADMIN_MULTI_TAP_WINDOW_MS);
+
+  if (pauseTapCount >= ADMIN_MULTI_TAP_COUNT) {
+    resetPauseTaps();
+    console.log("[PAUSE] multi-tap detected -> " + (isDebug ? "open ADMIN" : "open PIN modal"));
+    if (isDebug) {
+      window.location.href = "admin.html";
+    } else {
+      openPinModal();
+      if (backend && typeof backend.stopReleased === "function") {
+        backend.stopReleased();
+      }
+    }
+  }
+}
+
 function startPausePress() {
-  if (stopPressed) return;
+  if (stopPressed) {
+    console.log("[PAUSE] startPausePress ignored because stopPressed already true");
+    return;
+  }
   stopPressed = true;
+  console.log("[PAUSE] startPausePress -> stopPressed true");
   startAdminHold();
   if (backend && typeof backend.stopPressed === "function") {
+    console.log("[PAUSE] backend.stopPressed()");
     backend.stopPressed();
   }
 }
@@ -313,9 +417,11 @@ function stopPausePress() {
     clearAdminHold();
     return;
   }
+  registerPauseTap();
   stopPressed = false;
   clearAdminHold();
   if (backend && typeof backend.stopReleased === "function") {
+    console.log("[PAUSE] backend.stopReleased()");
     backend.stopReleased();
   }
 }
@@ -396,7 +502,9 @@ function closePinModal() {
 }
 
 function handlePinSubmit() {
-  const pins = (allowedPins && allowedPins.length > 0) ? allowedPins : [settings.pin, settings.pin2].filter(Boolean);
+  const pins = (allowedPins && allowedPins.length > 0)
+    ? allowedPins
+    : [settings?.pin, settings?.pin2].filter(Boolean);
   if (!pins.includes(pinValue)) {
     pinError.textContent = "Noto'g'ri PIN";
     pinValue = "";
@@ -416,6 +524,8 @@ function initWebChannel() {
 
   new QWebChannel(qt.webChannelTransport, (channel) => {
     backend = channel.objects.backend;
+
+    refreshSettingsFromBackend();
 
     if (backend && backend.stateChanged) {
       backend.stateChanged.connect((payload) => {

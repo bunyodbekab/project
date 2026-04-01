@@ -340,5 +340,41 @@
     "service_name": "XIZMAT 1",
     "earned": 20000,
     "date": "2026-03-31 22:43:32"
+  },
+  {
+    "service": "XIZMAT3",
+    "service_name": "XIZMAT 3",
+    "earned": 250,
+    "date": "2026-04-01 00:10:07"
+  },
+  {
+    "service": "XIZMAT3",
+    "service_name": "XIZMAT 3",
+    "earned": 500,
+    "date": "2026-04-01 00:11:55"
+  },
+  {
+    "service": "XIZMAT6",
+    "service_name": "XIZMAT 6",
+    "earned": 200,
+    "date": "2026-04-01 00:13:04"
+  },
+  {
+    "service": "PAUSE",
+    "service_name": "PAUZA",
+    "earned": 4800,
+    "date": "2026-04-01 00:15:05"
+  },
+  {
+    "service": "XIZMAT6",
+    "service_name": "XIZMAT 6",
+    "earned": 200,
+    "date": "2026-04-01 00:30:16"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 210,
+    "date": "2026-04-01 21:57:55"
   }
 ]

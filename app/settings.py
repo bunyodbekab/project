@@ -8,18 +8,19 @@ ICONS_DIR = os.path.join(BASE_DIR, "icons")
 
 DEFAULT_CONFIG = {
     "services": {
-        "XIZMAT1": {"display_name": "XIZMAT 1", "price_per_sec": 200, "duration": 60, "gpio_out": 227},
-        "XIZMAT2": {"display_name": "XIZMAT 2", "price_per_sec": 150, "duration": 100, "gpio_out": 75},
-        "XIZMAT3": {"display_name": "XIZMAT 3", "price_per_sec": 250, "duration": 80, "gpio_out": 79},
-        "XIZMAT4": {"display_name": "XIZMAT 4", "price_per_sec": 350, "duration": 70, "gpio_out": 78},
-        "XIZMAT5": {"display_name": "XIZMAT 5", "price_per_sec": 300, "duration": 50, "gpio_out": 71},
-        "XIZMAT6": {"display_name": "XIZMAT 6", "price_per_sec": 200, "duration": 90, "gpio_out": 233},
-        "XIZMAT7": {"display_name": "XIZMAT 7", "price_per_sec": 100, "duration": 120, "gpio_out": 74},
+        "XIZMAT1": {"display_name": "XIZMAT 1", "price_per_sec": 200, "duration": 60, "gpio_out": 227, "icon": "suv.png", "theme": "suv", "active": True},
+        "XIZMAT2": {"display_name": "XIZMAT 2", "price_per_sec": 150, "duration": 100, "gpio_out": 75, "icon": "osmos.png", "theme": "osmos", "active": True},
+        "XIZMAT3": {"display_name": "XIZMAT 3", "price_per_sec": 250, "duration": 80, "gpio_out": 79, "icon": "aktiv.png", "theme": "aktiv", "active": True},
+        "XIZMAT4": {"display_name": "XIZMAT 4", "price_per_sec": 350, "duration": 70, "gpio_out": 78, "icon": "pena.png", "theme": "pena", "active": True},
+        "XIZMAT5": {"display_name": "XIZMAT 5", "price_per_sec": 300, "duration": 50, "gpio_out": 71, "icon": "nano.png", "theme": "nano", "active": True},
+        "XIZMAT6": {"display_name": "XIZMAT 6", "price_per_sec": 200, "duration": 90, "gpio_out": 233, "icon": "vosk.png", "theme": "vosk", "active": True},
+        "XIZMAT7": {"display_name": "XIZMAT 7", "price_per_sec": 100, "duration": 120, "gpio_out": 74, "icon": "quritish.png", "theme": "quritish", "active": True},
     },
     "moyka_name": "MOYKA",
     "admin_pin": "1234",
     "admin_pin_alt": "5678",
     "total_earned": 0,
+    "show_icons": True,
     "bonus": {"percent": 0, "threshold": 0},
     "pause": {"freeSeconds": 5, "paidSecondsPer5000": 120},
 }
@@ -39,7 +40,7 @@ INPUT_GPIO_TO_SERVICE = {
 CHIP_NAME = "gpiochip1"
 LOW_BALANCE = 2000
 BLINK_WARN = 10
-DEBUG = True
+DEBUG = False
 
 FONT_FAMILY = "Arial"
 
@@ -71,4 +72,5 @@ def register_montserrat_fonts():
 
 
 def app_font(px, bold=False):
-    return QFont(FONT_FAMILY, px, QFont.Bold if bold else QFont.Normal)
+    weight = QFont.Weight.Bold if bold else QFont.Weight.Normal
+    return QFont(FONT_FAMILY, px, weight)
