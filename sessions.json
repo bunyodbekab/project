@@ -376,5 +376,11 @@
     "service_name": "SUV",
     "earned": 210,
     "date": "2026-04-01 21:57:55"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 84,
+    "date": "2026-04-01 23:13:44"
   }
 ]
