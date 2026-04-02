@@ -41,6 +41,7 @@ class MoykaUI(QWidget):
         self.pause_free_default = 0
         self.pause_paid_rate = 1
         self.pause_free_left = 0
+        self.pause_free_credit = 0
         self.pause_stage = "off"
 
         self.balance = 0
@@ -55,6 +56,8 @@ class MoykaUI(QWidget):
 
         self.blink_state = False
         self._low_balance_flash = False
+        self._button_press_lock_until = 0.0
+        self._button_press_lock_sec = 1.0
 
         self._pause_hold_timer = QTimer(self)
         self._pause_hold_timer.setSingleShot(True)
@@ -131,7 +134,21 @@ class MoykaUI(QWidget):
         self._root_layout.setContentsMargins(0, 0, 0, 0)
         self._root_layout.setSpacing(0)
 
-        self.top_panel = ClickableFrame(self)
+        self._main_page_shell = QWidget(self)
+        self._main_page_shell.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        main_shell_layout = QHBoxLayout(self._main_page_shell)
+        main_side_gap = max(12, int(self.w * 0.05))
+        main_shell_layout.setContentsMargins(main_side_gap, 0, main_side_gap, 0)
+        main_shell_layout.setSpacing(0)
+
+        self._main_page_container = QWidget(self._main_page_shell)
+        self._main_page_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        main_page_layout = QVBoxLayout(self._main_page_container)
+        main_page_layout.setContentsMargins(0, 0, 0, 0)
+        main_page_layout.setSpacing(0)
+        main_shell_layout.addWidget(self._main_page_container, 1)
+
+        self.top_panel = ClickableFrame(self._main_page_container)
         self.top_panel.setObjectName("TopPanel")
         self.top_panel.setFixedHeight(self._top_panel_height)
         self.top_panel.clicked.connect(self._on_top_panel_clicked)
@@ -161,15 +178,15 @@ class MoykaUI(QWidget):
         top_layout.addWidget(self.header_main)
         top_layout.addStretch(1)
 
-        self.divider = QFrame(self)
+        self.divider = QFrame(self._main_page_container)
         self.divider.setObjectName("Divider")
 
-        self.controls_wrap = QWidget(self)
+        self.controls_wrap = QWidget(self._main_page_container)
         self.controls_wrap.setObjectName("ControlsWrap")
         controls_layout = QVBoxLayout(self.controls_wrap)
         # HTML: padding: 2.2vh 2.6vw 2.5vh
         controls_padding_v_top = int(self.h * 0.012)
-        controls_padding_h = int(self.w * 0.056)
+        controls_padding_h = 0
         controls_padding_v_bot = int(self.h * 0.025)
         controls_layout.setContentsMargins(controls_padding_h, controls_padding_v_top, controls_padding_h, controls_padding_v_bot)
         # HTML: gap: 1.45vh
@@ -178,22 +195,24 @@ class MoykaUI(QWidget):
         grid_holder = QWidget(self.controls_wrap)
         grid_holder.setObjectName("GridHolder")
         self.service_grid = QGridLayout(grid_holder)
-        self.service_grid.setContentsMargins(0, 0, 0, int(self.w * 0.13))
+        self.service_grid.setContentsMargins(0, 0, 0, int(self.w * 0.03))
         # HTML: gap: 3.35vh 2vw - increased for better spacing
         self.service_grid.setHorizontalSpacing(int(self.w * 0.03))
         self.service_grid.setVerticalSpacing(int(self.w * 0.03))
         self.service_grid.setColumnStretch(0, 1)
-        self.service_grid.setColumnStretch(1, 1)
+        self.service_grid.setColumnStretch(1, 1)  # Set to transparent to show parent background
         controls_layout.addWidget(grid_holder, 1)
 
         self.pause_button = PauseButton(self.controls_wrap)
         self.pause_button.pressedSignal.connect(lambda: self._on_stop_pressed("touch"))
         self.pause_button.releasedSignal.connect(lambda: self._on_stop_released("touch"))
-        self.pause_button.longPressedSignal.connect(self._on_pause_button_long_pressed)
+        # Long-press PIN opening is handled by MoykaUI hold timer to avoid duplicate triggers.
 
-        self._root_layout.addWidget(self.top_panel)
-        self._root_layout.addWidget(self.divider)
-        self._root_layout.addWidget(self.controls_wrap, 1)
+        main_page_layout.addWidget(self.top_panel)
+        main_page_layout.addWidget(self.divider)
+        main_page_layout.addWidget(self.controls_wrap, 1)
+
+        self._root_layout.addWidget(self._main_page_shell, 1)
 
     def _on_top_panel_clicked(self):
         if self.is_running or self.pause_mode:
@@ -342,6 +361,12 @@ class MoykaUI(QWidget):
         paid_sec = max(1, int((pause_cfg or {}).get("paidSecondsPer5000", 60)))
         self.pause_paid_rate = max(1, math.ceil(5000 / paid_sec))
 
+        # Free pause is a single credit per balance cycle.
+        self.pause_free_credit = max(0, min(self.pause_free_credit, self.pause_free_default))
+        if self.balance <= 0 and not self.is_running and not self.pause_mode:
+            self.pause_free_credit = self.pause_free_default
+            self.pause_free_left = self.pause_free_credit
+
     def _map_to_hw_service(self, svc, used):
         requested = (svc.get("name") or svc.get("key") or "").strip()
         if requested and requested in self.cfg.get("services", {}) and requested not in used:
@@ -466,13 +491,13 @@ class MoykaUI(QWidget):
                 return str(slot.get("label", "")).replace("\n", " ")
         return self.cfg["services"].get(service_key, {}).get("display_name", service_key).upper()
 
-    def _header_color(self, mode):
+    def _header_color(self, mode, pause_status="off"):
         if self._low_balance_flash:
             return "#ff4d4d"
         if self.blink_timer.isActive() and self.blink_state:
             return "#ff4d4d"
         if mode == "pause":
-            return "#ff4d4d"
+            return "#ffd84d" if pause_status == "free" else "#ff4d4d"
         return "#ffffff"
 
     def _state_dict(self):
@@ -525,7 +550,7 @@ class MoykaUI(QWidget):
             "mode": mode,
             "title": title,
             "mainText": main_text,
-            "headerColor": self._header_color(mode),
+            "headerColor": self._header_color(mode, pause_state.get("status", "off")),
             "balanceText": _format_money(self.balance),
             "activeService": self.active_front_key or "",
             "services": services,
@@ -655,15 +680,19 @@ class MoykaUI(QWidget):
         is_pause = mode == "pause"
         is_free = pause_state.get("status") == "free"
         pause_label = pause_state.get("label") or ("TEKIN PAUZA" if is_free else "PAUZA")
-        pause_sub = pause_state.get("remainingText") or ""
+        # Keep pause timer internal; do not show countdown inside the pause button.
+        pause_sub = ""
         self.pause_button.set_state(is_pause, is_free, pause_label, pause_sub)
 
     def _fit_label_font(self, label, text, target_px, min_px, max_width):
         text = str(text or "")
+        lines = [line for line in text.splitlines() if line] or [text]
         px = max(min_px, int(target_px))
         while px > min_px:
             font = app_font(px, bold=True)
-            if QFontMetrics(font).horizontalAdvance(text) <= max_width:
+            fm = QFontMetrics(font)
+            widest_line = max(fm.horizontalAdvance(line) for line in lines)
+            if widest_line <= max_width:
                 break
             px -= 1
         label.setFont(app_font(px, bold=True))
@@ -671,10 +700,14 @@ class MoykaUI(QWidget):
     def _fit_header_fonts(self):
         if not hasattr(self, "top_panel"):
             return
-        max_width = max(140, self.top_panel.width() - 256)
-        max_height = max(90, self.top_panel.height() - 40)
-        title_px = min(self._title_px, max(24, int(max_height * 0.24)))
-        main_px = min(self._main_px, max(36, int(max_height * 0.45)))
+        panel_w = max(1, self.top_panel.width())
+        panel_h = max(1, self.top_panel.height())
+        size_ref = max(1, min(panel_w, panel_h))
+
+        # Use the smaller panel side as a stable base so idle/balance states stay consistent.
+        max_width = max(180, int(panel_w * 0.86))
+        title_px = min(self._title_px, max(26, int(size_ref * 0.13)))
+        main_px = min(self._main_px, max(42, int(size_ref * 0.19)))
         self._fit_label_font(self.header_title, self.header_title.text(), title_px, 20, max_width)
         self._fit_label_font(self.header_main, self.header_main.text(), main_px, 30, max_width)
 
@@ -701,7 +734,18 @@ class MoykaUI(QWidget):
                 self.balance += extra
                 self._bonus_awarded = True
 
+    def _buttons_locked(self):
+        return time.monotonic() < self._button_press_lock_until
+
+    def _lock_buttons(self, seconds=None):
+        lock_sec = self._button_press_lock_sec if seconds is None else max(0.0, float(seconds))
+        self._button_press_lock_until = max(self._button_press_lock_until, time.monotonic() + lock_sec)
+
     def button_clicked(self, front_key):
+        if self._buttons_locked():
+            return
+        self._lock_buttons()
+
         front_key = front_key or ""
         hw_key = self.front_key_to_hw.get(front_key, front_key)
         price = self.price_per_sec.get(front_key)
@@ -729,7 +773,6 @@ class MoykaUI(QWidget):
         self.active_front_key = front_key
         self.pause_mode = False
         self.pause_stage = "off"
-        self.pause_free_left = 0
         self.remaining_sec = math.ceil(self.balance / cost)
         self.is_running = True
         self.show_timer_mode = True
@@ -741,6 +784,10 @@ class MoykaUI(QWidget):
         self._check_blink()
 
     def _on_stop_pressed(self, source="touch"):
+        if self._buttons_locked():
+            return
+        self._lock_buttons()
+
         self._stop_hold_source = source
         self._stop_hold_started = time.monotonic()
         self._pause_hold_timer.start()
@@ -749,21 +796,16 @@ class MoykaUI(QWidget):
 
     def _on_stop_released(self, source="touch"):
         self._pause_hold_timer.stop()
-        hold_ms = None
-        if self._stop_hold_started:
-            hold_ms = (time.monotonic() - self._stop_hold_started) * 1000
         self._stop_hold_started = None
-
-        if self._stop_hold_source is not None and not self.is_running and hold_ms is not None and hold_ms >= 1900:
-            self._open_pin_modal()
-
         self._stop_hold_source = None
 
     def _pause_hold_tick(self):
         self._pause_hold_timer.stop()
-        if self._stop_hold_source is not None and not self.is_running:
+        # Open PIN only after a real long-press timeout from touch input.
+        if self._stop_hold_source == "touch" and not self.is_running:
             self._open_pin_modal()
-            self._stop_hold_source = None
+        self._stop_hold_source = None
+        self._stop_hold_started = None
 
     def _open_pin_modal(self):
         if self._pin_dialog_open:
@@ -806,9 +848,7 @@ class MoykaUI(QWidget):
         self._emit_state()
 
     def _set_main_page_visible(self, visible):
-        self.top_panel.setVisible(bool(visible))
-        self.divider.setVisible(bool(visible))
-        self.controls_wrap.setVisible(bool(visible))
+        self._main_page_shell.setVisible(bool(visible))
 
     def _wrap_page_container(self, page_widget):
         container = QWidget(self)
@@ -876,10 +916,12 @@ class MoykaUI(QWidget):
             return
 
         if self.pause_stage == "free" and self.pause_free_left > 0:
-            self.pause_free_left -= 1
+            self.pause_free_left = max(0, self.pause_free_left - 1)
+            self.pause_free_credit = self.pause_free_left
             self.remaining_sec = self.pause_free_left
             if self.pause_free_left <= 0:
                 self.pause_stage = "paid"
+                self.pause_free_credit = 0
                 self.remaining_sec = math.ceil(self.balance / self.pause_paid_rate) if self.balance > 0 else 0
             self._emit_state()
             return
@@ -904,7 +946,7 @@ class MoykaUI(QWidget):
     def _stop_pause(self):
         self.pause_mode = False
         self.pause_stage = "off"
-        self.pause_free_left = 0
+        self.pause_free_left = self.pause_free_credit
         self.service_timer.stop()
 
         if self.session_earned > 0:
@@ -921,6 +963,12 @@ class MoykaUI(QWidget):
 
         self.session_earned = 0
         self._bonus_awarded = False
+
+        # New cycle starts only after full balance depletion.
+        if self.balance <= 0:
+            self.pause_free_credit = self.pause_free_default
+            self.pause_free_left = self.pause_free_credit
+
         self._emit_state()
         self._check_blink()
 
@@ -952,10 +1000,11 @@ class MoykaUI(QWidget):
 
         if self.balance <= 0:
             self._bonus_awarded = False
+            self.pause_free_credit = self.pause_free_default
 
         if self.pause_mode:
-            self.pause_stage = "free" if self.pause_free_default > 0 else "paid"
-            self.pause_free_left = self.pause_free_default
+            self.pause_stage = "free" if self.pause_free_credit > 0 else "paid"
+            self.pause_free_left = self.pause_free_credit
             if self.pause_stage == "free":
                 self.remaining_sec = self.pause_free_left
             else:
@@ -965,7 +1014,7 @@ class MoykaUI(QWidget):
         else:
             self.session_earned = 0
             self.pause_stage = "off"
-            self.pause_free_left = 0
+            self.pause_free_left = self.pause_free_credit
             self.pause_mode = False
 
         self._emit_state()
@@ -1038,6 +1087,11 @@ class MoykaUI(QWidget):
     def resizeEvent(self, event):
         self._emit_state()
         super().resizeEvent(event)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # First render can happen before final geometry; schedule one more pass.
+        QTimer.singleShot(0, self._emit_state)
 
 
 class RotatedWindow(QWidget):

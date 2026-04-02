@@ -756,7 +756,9 @@ class AdminDialog(QDialog):
             theme_combo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             for theme_name, theme_values in THEME_COLORS.items():
                 swatch_color = "#4c88ff"
-                if isinstance(theme_values, tuple) and len(theme_values) > 1:
+                if isinstance(theme_values, dict):
+                    swatch_color = str(theme_values.get("swatch_color") or theme_values.get("border_color") or swatch_color)
+                elif isinstance(theme_values, tuple) and len(theme_values) > 1:
                     swatch_color = str(theme_values[1])
                 theme_combo.addItem(self._make_color_swatch_icon(swatch_color), "")
                 theme_combo.setItemData(theme_combo.count() - 1, theme_name, Qt.ItemDataRole.UserRole)

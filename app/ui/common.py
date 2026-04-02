@@ -18,35 +18,62 @@ from app.settings import ICONS_DIR, app_font
 
 # HTML/CSS-dagi original colors
 THEME_COLORS = {
-    "suv": ("linear-gradient(90deg, #3366de 0%, #2f62d7 100%)", "#4c88ff"),
-    "osmos": ("linear-gradient(90deg, #25a2d8 0%, #2298cf 100%)", "#43caff"),
-    "aktiv": ("linear-gradient(90deg, #cf49dc 0%, #c540d8 100%)", "#e8aff3"),
-    "pena": ("linear-gradient(90deg, #2cadc6 0%, #2aa8c0 100%)", "#47d8ec"),
-    "nano": ("linear-gradient(90deg, #6b6de8 0%, #6063df 100%)", "#878bf7"),
-    "vosk": ("linear-gradient(90deg, #f4a706 0%, #f1a102 100%)", "#ffd254"),
-    "quritish": ("linear-gradient(90deg, #1f9b6c 0%, #17895c 100%)", "#3ad89b"),
+    "suv": {
+        "gradient_css": "linear-gradient(90deg, #3366de 0%, #2f62d7 100%)",
+        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3366de, stop:1 #2f62d7)",
+        "swatch_color": "#4c88ff",
+        "border_color": "#4c88ff",
+    },
+    "osmos": {
+        "gradient_css": "linear-gradient(90deg, #25a2d8 0%, #2298cf 100%)",
+        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #25a2d8, stop:1 #2298cf)",
+        "swatch_color": "#43caff",
+        "border_color": "#43caff",
+    },
+    "aktiv": {
+        "gradient_css": "linear-gradient(90deg, #cf49dc 0%, #c540d8 100%)",
+        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #cf49dc, stop:1 #c540d8)",
+        "swatch_color": "#e8aff3",
+        "border_color": "#e8aff3",
+    },
+    "pena": {
+        "gradient_css": "linear-gradient(90deg, #2cadc6 0%, #2aa8c0 100%)",
+        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2cadc6, stop:1 #2aa8c0)",
+        "swatch_color": "#47d8ec",
+        "border_color": "#47d8ec",
+    },
+    "nano": {
+        "gradient_css": "linear-gradient(90deg, #6b6de8 0%, #6063df 100%)",
+        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6b6de8, stop:1 #6063df)",
+        "swatch_color": "#878bf7",
+        "border_color": "#878bf7",
+    },
+    "vosk": {
+        "gradient_css": "linear-gradient(90deg, #f4a706 0%, #f1a102 100%)",
+        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #f4a706, stop:1 #f1a102)",
+        "swatch_color": "#ffd254",
+        "border_color": "#ffd254",
+    },
+    "quritish": {
+        "gradient_css": "linear-gradient(90deg, #1f9b6c 0%, #17895c 100%)",
+        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1f9b6c, stop:1 #17895c)",
+        "swatch_color": "#3ad89b",
+        "border_color": "#3ad89b",
+    },
 }
 
 
 def _theme_palette(theme_name):
-    """Convert HTML/CSS gradient format to PyQt6 qlineargradient format"""
-    themes = {
-        "suv": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3366de, stop:1 #2f62d7)",
-        "osmos": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #25a2d8, stop:1 #2298cf)",
-        "aktiv": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #cf49dc, stop:1 #c540d8)",
-        "pena": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2cadc6, stop:1 #2aa8c0)",
-        "nano": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6b6de8, stop:1 #6063df)",
-        "vosk": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #f4a706, stop:1 #f1a102)",
-        "quritish": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1f9b6c, stop:1 #17895c)",
-    }
-    
-    # Return gradient and border color
-    gradient = themes.get(theme_name, themes["suv"])
-    borders = {
-        "suv": "#4c88ff", "osmos": "#43caff", "aktiv": "#e8aff3",
-        "pena": "#47d8ec", "nano": "#878bf7", "vosk": "#ffd254", "quritish": "#3ad89b"
-    }
-    return gradient, borders.get(theme_name, "#4c88ff")
+    default_theme = THEME_COLORS["suv"]
+    theme_meta = THEME_COLORS.get(theme_name, default_theme)
+
+    # Backward-compatible fallback in case old tuple format is loaded from elsewhere.
+    if isinstance(theme_meta, tuple):
+        return default_theme["gradient_qss"], str(theme_meta[1] if len(theme_meta) > 1 else default_theme["border_color"])
+
+    gradient = str(theme_meta.get("gradient_qss") or default_theme["gradient_qss"])
+    border_color = str(theme_meta.get("border_color") or default_theme["border_color"])
+    return gradient, border_color
 
 
 def _icon_path(icon_file):
@@ -202,8 +229,9 @@ class ServiceButton(QPushButton):
         self.icon_label.setFixedWidth(slot_width)
 
     def _apply_style(self):
-        gradient, _ = _theme_palette(self._theme)
-        border_css = "4px solid #f8fafc" if self._active else "3px solid rgba(255, 255, 255, 0.25)"
+        gradient, border_color = _theme_palette(self._theme)
+        active_border_color = "#f8fafc" if self._active else border_color
+        border_css = f"10px solid {active_border_color}"
 
         self.setStyleSheet(
             f"""
@@ -338,6 +366,9 @@ class PauseButton(QFrame):
 
         self.main_text = QLabel("PAUZA")
         self.main_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.main_text.setWordWrap(True)
+        self.main_text.setMinimumWidth(1)
+        self.main_text.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
 
         self.sub_text = QLabel("")
         self.sub_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -377,6 +408,7 @@ class PauseButton(QFrame):
         self._free = bool(is_free)
         self.main_text.setText(label or "PAUZA")
         self.sub_text.setText(sub_label or "")
+        self.sub_text.setVisible(bool(sub_label))
 
         if self._free:
             # Free pause - yellow
@@ -389,7 +421,12 @@ class PauseButton(QFrame):
             gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #f53a46, stop:1 #ed2435)"
             fg = "#ffffff"
 
-        border_width = "4px" if self._active else "3px"
+        border_width = "10px"
+        main_font_px = self._main_font_px
+        if self._free:
+            # "TEKIN PAUZA" is longer; keep it smaller so button geometry stays stable.
+            main_font_px = max(16, int(self._main_font_px * 0.56))
+
         self.setStyleSheet(
             f"""
             QFrame#PauseButton {{
@@ -405,7 +442,7 @@ class PauseButton(QFrame):
             """
         )
         self.main_text.setStyleSheet(
-            f"font-size: {self._main_font_px}px; font-weight: 800; letter-spacing: 0.01em; color: {fg};"
+            f"font-size: {main_font_px}px; font-weight: 800; letter-spacing: 0.01em; color: {fg};"
         )
         self.sub_text.setStyleSheet(
             f"font-size: {self._sub_font_px}px; font-weight: 700; color: {fg};"
@@ -415,12 +452,15 @@ class PauseButton(QFrame):
         if event.button() == Qt.MouseButton.LeftButton:
             self._long_press_triggered = False
             self._long_press_timer.start(2000)  # 2 seconds
+            self.grabMouse()
             self.pressedSignal.emit()
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self._long_press_timer.stop()
+            if QWidget.mouseGrabber() is self:
+                self.releaseMouse()
             self.releasedSignal.emit()
         super().mouseReleaseEvent(event)
     

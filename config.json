@@ -59,9 +59,9 @@
       "price_per_sec": 42,
       "duration": 120,
       "gpio_out": 74,
-      "icon": "quritish.png",
+      "icon": "osmos.png",
       "theme": "quritish",
-      "active": false
+      "active": true
     }
   },
   "moyka_name": "MOYKA",
@@ -71,9 +71,9 @@
     "percent": 0,
     "threshold": 0
   },
-  "total_earned": 270969,
+  "total_earned": 299117,
   "pause": {
-    "freeSeconds": 5,
+    "freeSeconds": 50,
     "paidSecondsPer5000": 120
   },
   "show_icons": true
