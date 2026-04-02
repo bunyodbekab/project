@@ -376,5 +376,35 @@
     "service_name": "SUV",
     "earned": 210,
     "date": "2026-04-01 21:57:55"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 84,
+    "date": "2026-04-01 23:13:44"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 84,
+    "date": "2026-04-02 14:17:21"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 630,
+    "date": "2026-04-02 14:19:12"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 1008,
+    "date": "2026-04-02 14:36:20"
+  },
+  {
+    "service": "XIZMAT5",
+    "service_name": "XIZMAT5",
+    "earned": 84,
+    "date": "2026-04-02 16:34:57"
   }
 ]

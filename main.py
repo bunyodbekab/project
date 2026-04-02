@@ -30,20 +30,8 @@ def _ensure_venv_runtime():
     return result.returncode
 
 
-def _enable_remote_debugging():
-    """Expose QtWebEngine remote debugging so Chrome devtools can attach."""
-    port = os.environ.get("QTWEBENGINE_REMOTE_DEBUGGING")
-    if not port:
-        port = os.environ.get("WEBENGINE_REMOTE_DEBUG_PORT", "9222")
-        os.environ["QTWEBENGINE_REMOTE_DEBUGGING"] = port
-    print(f"[WEBENGINE] Remote debugging: http://127.0.0.1:{port}")
-
-
-def _force_webengine_scale():
-    # Prevent QtWebEngine from inheriting OS 125% scaling; keep UI at 1:1.
-    flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS")
-    if not flags:
-        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--force-device-scale-factor=1.0"
+def _force_qt_scale():
+    # Keep layout predictable across DPI variants on kiosk screens.
     os.environ.setdefault("QT_SCALE_FACTOR", "1")
     os.environ.setdefault("QT_AUTO_SCREEN_SCALE_FACTOR", "0")
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "0")
@@ -55,17 +43,16 @@ def main():
     if delegated is not None:
         return delegated
 
-    _enable_remote_debugging()
-    _force_webengine_scale()
+    _force_qt_scale()
 
     from PyQt6.QtWidgets import QApplication
 
     from app.settings import app_font, register_montserrat_fonts
-    from app.ui.user import RotatedWindow
+    from app.ui.moykaui import RotatedWindow
 
     app = QApplication(sys.argv)
     register_montserrat_fonts()
-    app.setFont(app_font(11))
+    app.setFont(app_font(11, bold=True))
 
     window = RotatedWindow()
     window.show_ui()
