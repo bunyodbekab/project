@@ -10,7 +10,7 @@
       "active": true
     },
     "XIZMAT2": {
-      "display_name": "XIZMAT2",
+      "display_name": "OSMOS",
       "price_per_sec": 42,
       "duration": 120,
       "gpio_out": 75,
@@ -19,7 +19,7 @@
       "active": true
     },
     "XIZMAT3": {
-      "display_name": "XIZMAT3",
+      "display_name": "AKTIV PENA",
       "price_per_sec": 42,
       "duration": 120,
       "gpio_out": 79,
@@ -28,7 +28,7 @@
       "active": true
     },
     "XIZMAT4": {
-      "display_name": "XIZMAT4",
+      "display_name": "PENA",
       "price_per_sec": 42,
       "duration": 120,
       "gpio_out": 78,
@@ -37,7 +37,7 @@
       "active": true
     },
     "XIZMAT5": {
-      "display_name": "XIZMAT5",
+      "display_name": "NANO",
       "price_per_sec": 42,
       "duration": 120,
       "gpio_out": 71,
@@ -46,7 +46,7 @@
       "active": true
     },
     "XIZMAT6": {
-      "display_name": "XIZMAT6",
+      "display_name": "VOSK",
       "price_per_sec": 42,
       "duration": 120,
       "gpio_out": 233,
@@ -66,7 +66,7 @@
   },
   "moyka_name": "MOYKA",
   "admin_pin": "1234",
-  "admin_pin_alt": "5678",
+  "admin_pin_alt": "1234",
   "bonus": {
     "percent": 0,
     "threshold": 0

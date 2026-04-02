@@ -1,5 +1,5 @@
 ﻿import os
-from PyQt6.QtCore import QRectF, QSize, Qt, pyqtSignal
+from PyQt6.QtCore import QRectF, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFontMetrics, QIcon, QPixmap, QTransform
 from PyQt6.QtWidgets import (
     QFrame,
@@ -294,6 +294,7 @@ class ServiceButton(QPushButton):
 class PauseButton(QFrame):
     pressedSignal = pyqtSignal()
     releasedSignal = pyqtSignal()
+    longPressedSignal = pyqtSignal()  # Emitted after 2 seconds of continuous press
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -302,6 +303,10 @@ class PauseButton(QFrame):
         self._main_font_px = 56
         self._sub_font_px = 26
         self._mark_font_px = 38
+        self._long_press_timer = QTimer()
+        self._long_press_timer.setSingleShot(True)
+        self._long_press_timer.timeout.connect(self._on_long_press_timeout)
+        self._long_press_triggered = False
 
         self.setObjectName("PauseButton")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -408,12 +413,20 @@ class PauseButton(QFrame):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
+            self._long_press_triggered = False
+            self._long_press_timer.start(2000)  # 2 seconds
             self.pressedSignal.emit()
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
+            self._long_press_timer.stop()
             self.releasedSignal.emit()
         super().mouseReleaseEvent(event)
+    
+    def _on_long_press_timeout(self):
+        """Triggered after 2 seconds of holding down the button."""
+        self._long_press_triggered = True
+        self.longPressedSignal.emit()
 
 

@@ -8,7 +8,7 @@ from functools import partial
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFontMetrics
-from PyQt6.QtWidgets import QApplication, QDialog, QFrame, QGridLayout, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from app.gpio_controller import GPIOController
 from app.settings import BLINK_WARN, DEBUG, DEFAULT_CONFIG, INPUT_GPIO_TO_SERVICE, LOW_BALANCE, app_font
@@ -80,6 +80,7 @@ class MoykaUI(QWidget):
         self._service_buttons = {}
         self._grid_dirty = True
         self._pin_dialog_open = False
+        self._active_page_widget = None
 
         self._setup_ui()
         self._rebuild_front_services()
@@ -126,9 +127,9 @@ class MoykaUI(QWidget):
             """
         )
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
+        self._root_layout = QVBoxLayout(self)
+        self._root_layout.setContentsMargins(0, 0, 0, 0)
+        self._root_layout.setSpacing(0)
 
         self.top_panel = ClickableFrame(self)
         self.top_panel.setObjectName("TopPanel")
@@ -160,12 +161,12 @@ class MoykaUI(QWidget):
         top_layout.addWidget(self.header_main)
         top_layout.addStretch(1)
 
-        divider = QFrame(self)
-        divider.setObjectName("Divider")
+        self.divider = QFrame(self)
+        self.divider.setObjectName("Divider")
 
-        controls_wrap = QWidget(self)
-        controls_wrap.setObjectName("ControlsWrap")
-        controls_layout = QVBoxLayout(controls_wrap)
+        self.controls_wrap = QWidget(self)
+        self.controls_wrap.setObjectName("ControlsWrap")
+        controls_layout = QVBoxLayout(self.controls_wrap)
         # HTML: padding: 2.2vh 2.6vw 2.5vh
         controls_padding_v_top = int(self.h * 0.012)
         controls_padding_h = int(self.w * 0.056)
@@ -174,7 +175,7 @@ class MoykaUI(QWidget):
         # HTML: gap: 1.45vh
         controls_layout.setSpacing(int(self.h * 0.0145))
 
-        grid_holder = QWidget(controls_wrap)
+        grid_holder = QWidget(self.controls_wrap)
         grid_holder.setObjectName("GridHolder")
         self.service_grid = QGridLayout(grid_holder)
         self.service_grid.setContentsMargins(0, 0, 0, int(self.w * 0.13))
@@ -185,13 +186,14 @@ class MoykaUI(QWidget):
         self.service_grid.setColumnStretch(1, 1)
         controls_layout.addWidget(grid_holder, 1)
 
-        self.pause_button = PauseButton(controls_wrap)
+        self.pause_button = PauseButton(self.controls_wrap)
         self.pause_button.pressedSignal.connect(lambda: self._on_stop_pressed("touch"))
         self.pause_button.releasedSignal.connect(lambda: self._on_stop_released("touch"))
+        self.pause_button.longPressedSignal.connect(self._on_pause_button_long_pressed)
 
-        root.addWidget(self.top_panel)
-        root.addWidget(divider)
-        root.addWidget(controls_wrap, 1)
+        self._root_layout.addWidget(self.top_panel)
+        self._root_layout.addWidget(self.divider)
+        self._root_layout.addWidget(self.controls_wrap, 1)
 
     def _on_top_panel_clicked(self):
         if self.is_running or self.pause_mode:
@@ -300,13 +302,6 @@ class MoykaUI(QWidget):
         paid_sec = max(1, int(paid_value or 60))
 
         pin1 = str(raw.get("pin") or self.cfg.get("admin_pin", "1234"))
-        pin2 = str(
-            raw.get("pin2")
-            or raw.get("pin_alt")
-            or raw.get("admin_pin_alt")
-            or raw.get("adminPinAlt")
-            or self.cfg.get("admin_pin_alt", "5678")
-        )
 
         bonus_percent = int(
             raw.get("bonusPercent")
@@ -329,7 +324,6 @@ class MoykaUI(QWidget):
 
         return {
             "pin": pin1,
-            "pin2": pin2,
             "totalButtons": int(total_buttons),
             "showIcons": bool(show_icons),
             "pause": {"freeSeconds": free_sec, "paidSecondsPer5000": paid_sec},
@@ -426,8 +420,9 @@ class MoykaUI(QWidget):
             return
 
         self.front_settings = norm
-        self.cfg["admin_pin"] = norm.get("pin", self.cfg.get("admin_pin", "1234"))
-        self.cfg["admin_pin_alt"] = norm.get("pin2", self.cfg.get("admin_pin_alt", "5678"))
+        single_pin = str(norm.get("pin", self.cfg.get("admin_pin", "1234")))
+        self.cfg["admin_pin"] = single_pin
+        self.cfg["admin_pin_alt"] = single_pin
         self.cfg["show_icons"] = bool(norm.get("showIcons", self.cfg.get("show_icons", True)))
 
         bonus_cfg = norm.get("bonus", {}) or {}
@@ -537,7 +532,7 @@ class MoykaUI(QWidget):
             "pauseState": pause_state,
             "canAddMoney": mode == "idle",
             "total_earned": self.cfg.get("total_earned", 0),
-            "admin_pins": [self.cfg.get("admin_pin", "1234"), self.cfg.get("admin_pin_alt", "5678")],
+            "admin_pins": [self.cfg.get("admin_pin", "1234")],
             "bonus": self.cfg.get("bonus", {}),
             "debug": bool(DEBUG),
         }
@@ -545,7 +540,6 @@ class MoykaUI(QWidget):
     def _settings_payload(self):
         return {
             "pin": self.cfg.get("admin_pin", "1234"),
-            "pin2": self.cfg.get("admin_pin_alt", "5678"),
             "showIcons": bool(self.cfg.get("show_icons", True)),
             "show_icons": bool(self.cfg.get("show_icons", True)),
             "bonus": self.cfg.get("bonus", {}),
@@ -776,23 +770,77 @@ class MoykaUI(QWidget):
             return
 
         self._pin_dialog_open = True
-        try:
-            pins = [self.cfg.get("admin_pin", "1234"), self.cfg.get("admin_pin_alt", "5678")]
-            dialog = PinDialog(pins, self)
-            dialog.resize(520, 680)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                self._open_admin_panel()
-        finally:
-            self._pin_dialog_open = False
+        self._set_main_page_visible(False)
+        self._clear_active_page_widget()
+
+        pins = [self.cfg.get("admin_pin", "1234")]
+        dialog = PinDialog(pins, self)
+        dialog.setModal(False)
+        dialog.setWindowFlags(Qt.WindowType.Widget)
+        dialog.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        dialog.accepted.connect(self._on_pin_page_accepted)
+        dialog.rejected.connect(self._on_pin_page_rejected)
+
+        page_container = self._wrap_page_container(dialog)
+        self._active_page_widget = page_container
+        self._root_layout.addWidget(page_container, 1)
 
     def _open_admin_panel(self):
+        self._clear_active_page_widget()
+
         dialog = AdminDialog(self, self)
-        dialog.setWindowState(dialog.windowState() | Qt.WindowState.WindowFullScreen)
-        dialog.exec()
-        self._emit_state()
+        dialog.setModal(False)
+        dialog.setWindowFlags(Qt.WindowType.Widget)
+        dialog.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        dialog.accepted.connect(self._on_admin_page_closed)
+        dialog.rejected.connect(self._on_admin_page_closed)
+
+        page_container = self._wrap_page_container(dialog)
+        self._active_page_widget = page_container
+        self._root_layout.addWidget(page_container, 1)
 
     def _return_to_main(self):
+        self._clear_active_page_widget()
+        self._set_main_page_visible(True)
+        self._pin_dialog_open = False
         self._emit_state()
+
+    def _set_main_page_visible(self, visible):
+        self.top_panel.setVisible(bool(visible))
+        self.divider.setVisible(bool(visible))
+        self.controls_wrap.setVisible(bool(visible))
+
+    def _wrap_page_container(self, page_widget):
+        container = QWidget(self)
+        container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+        side_gap = max(12, int(self.w * 0.05))
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(side_gap, 0, side_gap, 0)
+        layout.setSpacing(0)
+        layout.addWidget(page_widget, 1)
+        return container
+
+    def _clear_active_page_widget(self):
+        if self._active_page_widget is None:
+            return
+        self._root_layout.removeWidget(self._active_page_widget)
+        self._active_page_widget.setParent(None)
+        self._active_page_widget.deleteLater()
+        self._active_page_widget = None
+
+    def _on_pin_page_accepted(self):
+        self._open_admin_panel()
+
+    def _on_pin_page_rejected(self):
+        self._return_to_main()
+
+    def _on_admin_page_closed(self):
+        self._return_to_main()
+
+    def _on_pause_button_long_pressed(self):
+        """Triggered when pause button is held for 2 seconds."""
+        self._open_pin_modal()
 
     def _tick(self):
         if self.pause_mode:

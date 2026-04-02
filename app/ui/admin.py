@@ -3,8 +3,8 @@
 import math
 from functools import partial
 
-from PyQt6.QtCore import QEvent, Qt
-from PyQt6.QtGui import QIcon, QIntValidator
+from PyQt6.QtCore import QEvent, QSize, Qt
+from PyQt6.QtGui import QColor, QIcon, QIntValidator, QPainter, QPixmap
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QTableWidget,
     QVBoxLayout,
     QWidget,
@@ -26,13 +27,62 @@ from app.settings import DEFAULT_CONFIG, app_font
 from .common import THEME_COLORS, _format_money, _icon_path, _to_int
 
 
+class FallbackComboBox(QComboBox):
+    """Compact selector: click to cycle values, avoids popup issues in rotated/touch layouts."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMaxVisibleItems(12)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def showPopup(self):
+        # Disable native popup in this layout; selection changes by click cycling.
+        return
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self.count() > 0:
+                next_index = (self.currentIndex() + 1) % self.count()
+                self.setCurrentIndex(next_index)
+                self.activated.emit(next_index)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+
+class CenteredIconComboBox(FallbackComboBox):
+    """Icon-only selector that always paints the current icon at the exact center."""
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+
+        idx = self.currentIndex()
+        if idx < 0:
+            return
+
+        icon = self.itemIcon(idx)
+        if icon.isNull():
+            return
+
+        size = self.iconSize()
+        if size.isEmpty():
+            size = QSize(min(self.width(), 48), min(self.height(), 48))
+
+        pixmap = icon.pixmap(size)
+        x = (self.width() - pixmap.width()) // 2
+        y = (self.height() - pixmap.height()) // 2
+        painter.drawPixmap(x, y, pixmap)
+
+
 class PinDialog(QDialog):
     def __init__(self, allowed_pins, parent=None):
         super().__init__(parent)
         self.allowed_pins = [str(p) for p in allowed_pins if str(p)]
         self._pin_value = ""
 
-        self.setModal(True)
+        self.setModal(False)
         self.setWindowTitle("Admin PIN")
         self.setFont(app_font(12, bold=True))
         self.setStyleSheet(
@@ -49,20 +99,28 @@ class PinDialog(QDialog):
                 color: #f8fafc;
                 border: 1px solid rgba(76, 136, 255, 0.5);
                 border-radius: 10px;
-                font-size: 20px;
+                font-size: 26px;
                 font-weight: 800;
-                padding: 10px;
+                padding: 12px;
             }
             QPushButton:pressed {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3a6fd4, stop:1 #2d5cb3);
             }
             QPushButton#SubmitBtn {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4c88ff, stop:1 #3a6fd4);
+                font-size: 30px;
             }
             QPushButton#ClearBtn {
                 background: rgba(76, 136, 255, 0.08);
                 border-color: rgba(76, 136, 255, 0.3);
                 color: #a8d5ff;
+                font-size: 30px;
+            }
+            QPushButton#CancelBtn {
+                font-size: 30px;
+            }
+            QPushButton#DigitBtn {
+                font-size: 52px;
             }
             """
         )
@@ -71,55 +129,106 @@ class PinDialog(QDialog):
         root.setContentsMargins(26, 26, 26, 26)
         root.setSpacing(14)
 
+        top_section = QWidget(self)
+        top_layout = QVBoxLayout(top_section)
+        top_layout.setContentsMargins(0, 0, 0, 0)
+        top_layout.setSpacing(10)
+
         title = QLabel("PIN kiriting")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size: 30px; font-weight: 800;")
-        root.addWidget(title)
+        title.setStyleSheet("font-size: 52px; font-weight: 900;")
+        title.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-        self.pin_dots = QLabel("o o o o o o")
-        self.pin_dots.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.pin_dots.setStyleSheet("font-size: 26px; font-weight: 800;")
-        root.addWidget(self.pin_dots)
+        self._pin_dot_size = 64
+        self._pin_dot_border = 5
+        self.pin_dots = QWidget(self)
+        self.pin_dots.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+        dots_layout = QHBoxLayout(self.pin_dots)
+        dots_layout.setContentsMargins(0, 0, 0, 0)
+        dots_layout.setSpacing(18)
+        dots_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.pin_dot_items = []
+        for _ in range(6):
+            dot = QFrame(self.pin_dots)
+            dot.setFixedSize(self._pin_dot_size, self._pin_dot_size)
+            dots_layout.addWidget(dot)
+            self.pin_dot_items.append(dot)
 
         self.error_label = QLabel("")
         self.error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.error_label.setStyleSheet("color: #ff9a9a; font-size: 18px; min-height: 24px;")
-        root.addWidget(self.error_label)
+        self.error_label.setStyleSheet("color: #ff9a9a; font-size: 24px; min-height: 36px;")
+        self.error_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+        top_layout.addStretch(1)
+        top_layout.addWidget(title)
+        top_layout.addWidget(self.pin_dots)
+        top_layout.addWidget(self.error_label)
+        top_layout.addStretch(1)
+
+        bottom_section = QWidget(self)
+        bottom_layout = QVBoxLayout(bottom_section)
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_layout.setSpacing(10)
 
         keypad = QGridLayout()
         keypad.setSpacing(8)
+        keypad.setContentsMargins(0, 0, 0, 0)
         digits = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
         for idx, digit in enumerate(digits):
             row = idx // 3
             col = idx % 3
             btn = QPushButton(digit)
+            btn.setObjectName("DigitBtn")
+            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             btn.clicked.connect(partial(self._add_digit, digit))
             keypad.addWidget(btn, row, col)
 
         zero_btn = QPushButton("0")
+        zero_btn.setObjectName("DigitBtn")
+        zero_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         zero_btn.clicked.connect(partial(self._add_digit, "0"))
         keypad.addWidget(zero_btn, 3, 1)
 
-        root.addLayout(keypad)
+        for row in range(4):
+            keypad.setRowStretch(row, 1)
+        for col in range(3):
+            keypad.setColumnStretch(col, 1)
+
+        bottom_layout.addLayout(keypad, 1)
 
         actions = QHBoxLayout()
         actions.setSpacing(10)
 
         cancel_btn = QPushButton("Bekor qilish")
+        cancel_btn.setObjectName("CancelBtn")
+        cancel_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        cancel_btn.setMinimumHeight(96)
         cancel_btn.clicked.connect(self.reject)
 
         clear_btn = QPushButton("Tozalash")
         clear_btn.setObjectName("ClearBtn")
+        clear_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        clear_btn.setMinimumHeight(96)
         clear_btn.clicked.connect(self._clear)
 
         submit_btn = QPushButton("Kirish")
         submit_btn.setObjectName("SubmitBtn")
+        submit_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        submit_btn.setMinimumHeight(96)
         submit_btn.clicked.connect(self._submit)
 
         actions.addWidget(cancel_btn)
         actions.addWidget(clear_btn)
         actions.addWidget(submit_btn)
-        root.addLayout(actions)
+
+        bottom_layout.addLayout(actions)
+
+        # Full-page split: top 35% PIN area, bottom 65% keypad area.
+        root.addWidget(top_section, 35)
+        root.addWidget(bottom_section, 65)
+        self._refresh_dots()
 
     def _add_digit(self, digit):
         if len(self._pin_value) >= 6:
@@ -134,10 +243,15 @@ class PinDialog(QDialog):
         self._refresh_dots()
 
     def _refresh_dots(self):
-        dots = []
-        for idx in range(6):
-            dots.append("O" if idx < len(self._pin_value) else "o")
-        self.pin_dots.setText(" ".join(dots))
+        for idx, dot in enumerate(self.pin_dot_items):
+            is_filled = idx < len(self._pin_value)
+            bg = "#f8fafc" if is_filled else "rgba(248, 250, 252, 0.06)"
+            border = "#f8fafc" if is_filled else "rgba(248, 250, 252, 0.78)"
+            dot.setStyleSheet(
+                f"background: {bg};"
+                f"border: {self._pin_dot_border}px solid {border};"
+                f"border-radius: {self._pin_dot_size // 2}px;"
+            )
 
     def _submit(self):
         if self._pin_value in self.allowed_pins:
@@ -161,8 +275,9 @@ class AdminDialog(QDialog):
             if icon_name and icon_name not in self.icon_options:
                 self.icon_options.append(icon_name)
 
-        self.setModal(True)
+        self.setModal(False)
         self.setWindowTitle("Admin sozlamalar")
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setFont(app_font(12, bold=True))
         self.setStyleSheet(
             """
@@ -174,7 +289,7 @@ class AdminDialog(QDialog):
                 color: #f8fafc;
             }
             QLabel#StatusLabel {
-                font-size: 16px;
+                font-size: 22px;
                 color: #60a5fa;
             }
             QLineEdit, QComboBox {
@@ -182,33 +297,60 @@ class AdminDialog(QDialog):
                 border: 1px solid rgba(255, 255, 255, 0.2);
                 border-radius: 8px;
                 color: #f8fafc;
-                padding: 8px 10px;
-                font-size: 18px;
+                padding: 10px 14px;
+                font-size: 22px;
             }
             QLineEdit:focus, QComboBox:focus {
                 border: 1px solid #4c88ff;
+            }
+            QComboBox::drop-down {
+                width: 34px;
+                border-left: 1px solid rgba(255, 255, 255, 0.2);
+            }
+            QComboBox#IconOnlyCombo {
+                background: transparent;
+                border: none;
+                padding: 0px;
+            }
+            QComboBox#IconOnlyCombo::drop-down {
+                width: 0px;
+                border: none;
+            }
+            QComboBox#IconOnlyCombo::down-arrow {
+                image: none;
+                width: 0px;
+                height: 0px;
+            }
+            QComboBox QAbstractItemView {
+                background: rgba(12, 24, 59, 0.98);
+                color: #f8fafc;
+                border: 1px solid rgba(126, 174, 248, 0.55);
+                selection-background-color: #2d6bd8;
+                selection-color: #ffffff;
+                font-size: 22px;
+                outline: none;
             }
             QTableWidget {
                 background: rgba(10, 34, 78, 0.6);
                 border: 1px solid rgba(126, 174, 248, 0.28);
                 gridline-color: rgba(126, 174, 248, 0.28);
-                font-size: 17px;
+                font-size: 22px;
             }
             QHeaderView::section {
                 background: rgba(126, 174, 248, 0.18);
                 color: #e2e8f0;
-                font-size: 16px;
+                font-size: 21px;
                 font-weight: 800;
                 border: 1px solid rgba(126, 174, 248, 0.28);
-                padding: 8px;
+                padding: 10px;
             }
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4c88ff, stop:1 #3a6fd4);
                 border: 1px solid rgba(76, 136, 255, 0.5);
                 border-radius: 10px;
                 color: #ffffff;
-                padding: 10px 16px;
-                font-size: 18px;
+                padding: 12px 18px;
+                font-size: 22px;
                 font-weight: 800;
             }
             QPushButton:pressed {
@@ -225,8 +367,35 @@ class AdminDialog(QDialog):
                 background: #20478f;
                 border-color: #7eaef8;
             }
-            QCheckBox {
-                font-size: 18px;
+            QPushButton#SaveBtn, QPushButton#ResetBtn, QPushButton#CloseBtn {
+                font-size: 26px;
+                min-height: 78px;
+            }
+            QPushButton#CloseTopBtn {
+                background: #20478f;
+                border-color: #7eaef8;
+                font-size: 22px;
+                min-height: 58px;
+            }
+            QCheckBox#SwitchCheck {
+                font-size: 22px;
+                font-weight: 700;
+                color: #dbe9ff;
+                spacing: 14px;
+            }
+            QCheckBox#SwitchCheck::indicator {
+                width: 58px;
+                height: 32px;
+                border-radius: 16px;
+                border: 2px solid rgba(248, 250, 252, 0.48);
+                background: rgba(160, 174, 192, 0.45);
+            }
+            QCheckBox#SwitchCheck::indicator:checked {
+                background: #22c55e;
+                border: 2px solid #86efac;
+            }
+            QCheckBox#SwitchCheck::indicator:unchecked {
+                background: rgba(71, 85, 105, 0.75);
             }
             """
         )
@@ -250,16 +419,15 @@ class AdminDialog(QDialog):
 
         self.total_label = QLabel("")
         self.total_label.setStyleSheet(
-            "font-size: 18px; font-weight: 800; color: #e9f2ff;"
+            "font-size: 22px; font-weight: 800; color: #e9f2ff;"
             "background: rgba(126, 174, 248, 0.2); border: 1px solid rgba(126, 174, 248, 0.45);"
             "border-radius: 8px; padding: 8px 12px;"
         )
+        chip_height = 62
+        self.total_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.total_label.setMinimumHeight(chip_height)
+        self.total_label.setMaximumHeight(chip_height)
         header.addWidget(self.total_label)
-
-        close_top = QPushButton("Yopish")
-        close_top.setObjectName("CloseBtn")
-        close_top.clicked.connect(self.accept)
-        header.addWidget(close_top)
 
         root.addLayout(header)
 
@@ -273,20 +441,19 @@ class AdminDialog(QDialog):
         settings_layout.setVerticalSpacing(12)
 
         self.pin_edit = self._new_text_edit(max_len=6, digits_only=True)
-        self.pin2_edit = self._new_text_edit(max_len=6, digits_only=True)
-        self.show_icons_check = QCheckBox("Iconlar")
+        self.show_icons_check = QCheckBox("Iconlar ko'rsatish")
+        self.show_icons_check.setObjectName("SwitchCheck")
         self.free_pause_edit = self._new_number_edit(0)
         self.paid_pause_edit = self._new_number_edit(1)
         self.bonus_percent_edit = self._new_number_edit(0)
         self.bonus_threshold_edit = self._new_number_edit(0)
 
         self._add_labeled_field(settings_layout, 0, 0, "PIN", self.pin_edit)
-        self._add_labeled_field(settings_layout, 0, 1, "PIN 2", self.pin2_edit)
-        self._add_labeled_field(settings_layout, 0, 2, "Tekin pauza (s)", self.free_pause_edit)
-        self._add_labeled_field(settings_layout, 0, 3, "Pauza 5000 so'm (s)", self.paid_pause_edit)
-        self._add_labeled_field(settings_layout, 1, 0, "Bonus %", self.bonus_percent_edit)
-        self._add_labeled_field(settings_layout, 1, 1, "Bonus threshold (so'm)", self.bonus_threshold_edit)
-        settings_layout.addWidget(self.show_icons_check, 1, 2, 1, 2)
+        self._add_labeled_field(settings_layout, 0, 1, "Tekin pauza (s)", self.free_pause_edit)
+        self._add_labeled_field(settings_layout, 0, 2, "Pauza 5000 so'm (s)", self.paid_pause_edit)
+        self._add_labeled_field(settings_layout, 0, 3, "Bonus %", self.bonus_percent_edit)
+        self._add_labeled_field(settings_layout, 1, 0, "Bonus threshold (so'm)", self.bonus_threshold_edit)
+        settings_layout.addWidget(self.show_icons_check, 1, 1, 1, 3)
 
         root.addWidget(settings_card)
 
@@ -307,11 +474,17 @@ class AdminDialog(QDialog):
         self.service_table.verticalHeader().setVisible(False)
         self.service_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.service_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.service_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.service_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.service_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self.service_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        self.service_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.service_table.setShowGrid(False)
+        header_view = self.service_table.horizontalHeader()
+        header_view.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        header_view.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        header_view.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        header_view.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        self.service_table.setColumnWidth(1, 124)
+        self.service_table.setColumnWidth(2, 124)
+        self.service_table.setColumnWidth(3, 122)
+        self.service_table.setColumnWidth(4, 96)
         services_layout.addWidget(self.service_table)
 
         root.addWidget(services_card, 1)
@@ -325,11 +498,11 @@ class AdminDialog(QDialog):
         keyboard_layout.setSpacing(8)
 
         keyboard_label = QLabel("Virtual klaviatura")
-        keyboard_label.setStyleSheet("font-size: 16px; color: #b6cdf5; font-weight: 700;")
+        keyboard_label.setStyleSheet("font-size: 19px; color: #b6cdf5; font-weight: 700;")
         keyboard_layout.addWidget(keyboard_label)
 
         self.keyboard_display = QLabel("Fokus: yo'q")
-        self.keyboard_display.setStyleSheet("font-size: 18px; color: #dbe9ff; font-weight: 800;")
+        self.keyboard_display.setStyleSheet("font-size: 22px; color: #dbe9ff; font-weight: 800;")
         keyboard_layout.addWidget(self.keyboard_display)
 
         key_rows = [
@@ -359,14 +532,17 @@ class AdminDialog(QDialog):
 
         reset_btn = QPushButton("Standartga qaytarish")
         reset_btn.setObjectName("ResetBtn")
+        reset_btn.setMinimumHeight(82)
         reset_btn.clicked.connect(self._reset_defaults)
 
         save_btn = QPushButton("Saqlash")
         save_btn.setObjectName("SaveBtn")
+        save_btn.setMinimumHeight(82)
         save_btn.clicked.connect(self._save)
 
         close_btn = QPushButton("Yopish")
         close_btn.setObjectName("CloseBtn")
+        close_btn.setMinimumHeight(82)
         close_btn.clicked.connect(self.accept)
 
         footer.addWidget(reset_btn)
@@ -375,7 +551,6 @@ class AdminDialog(QDialog):
         root.addLayout(footer)
 
         self._register_focus_target(self.pin_edit, pin=True)
-        self._register_focus_target(self.pin2_edit, pin=True)
         self._register_focus_target(self.free_pause_edit, numeric=True)
         self._register_focus_target(self.paid_pause_edit, numeric=True)
         self._register_focus_target(self.bonus_percent_edit, numeric=True)
@@ -396,6 +571,17 @@ class AdminDialog(QDialog):
         edit.setValidator(QIntValidator(min_value, 999999))
         return edit
 
+    def _make_color_swatch_icon(self, color_hex):
+        pixmap = QPixmap(64, 38)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setBrush(QColor(color_hex))
+        painter.setPen(QColor("#f8fafc"))
+        painter.drawRoundedRect(1, 1, 62, 36, 12, 12)
+        painter.end()
+        return QIcon(pixmap)
+
     def _add_labeled_field(self, layout, row, col, label, widget):
         container = QWidget()
         container_layout = QVBoxLayout(container)
@@ -403,11 +589,30 @@ class AdminDialog(QDialog):
         container_layout.setSpacing(4)
 
         cap = QLabel(label)
-        cap.setStyleSheet("font-size: 14px; color: #dce3f4; font-weight: 700;")
+        cap.setStyleSheet("font-size: 16px; color: #dce3f4; font-weight: 700;")
         container_layout.addWidget(cap)
         container_layout.addWidget(widget)
 
         layout.addWidget(container, row, col)
+
+    def _build_centered_service_cell(self, widget):
+        holder = QFrame()
+        holder.setObjectName("CenteredServiceCell")
+        holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+        holder_layout = QHBoxLayout(holder)
+        holder_layout.setContentsMargins(6, 8, 6, 8)
+        holder_layout.setSpacing(0)
+        holder_layout.addWidget(widget, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        holder.setStyleSheet(
+            "QFrame#CenteredServiceCell {"
+            "border: 1px solid rgba(126, 174, 248, 0.55);"
+            "border-radius: 10px;"
+            "background: rgba(12, 24, 59, 0.22);"
+            "}"
+        )
+        return holder
 
     def _register_focus_target(self, widget, numeric=False, pin=False):
         widget.setProperty("numeric", bool(numeric or pin))
@@ -420,11 +625,29 @@ class AdminDialog(QDialog):
             self._update_keyboard_display()
         return super().eventFilter(obj, event)
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._clear_initial_focus()
+
+    def _clear_initial_focus(self):
+        for widget in (
+            self.pin_edit,
+            self.free_pause_edit,
+            self.paid_pause_edit,
+            self.bonus_percent_edit,
+            self.bonus_threshold_edit,
+        ):
+            widget.clearFocus()
+        self.service_table.clearSelection()
+        self.service_table.clearFocus()
+        self._active_input = None
+        self.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._update_keyboard_display()
+
     def _load_payload(self, payload):
         payload = payload or {}
 
         self.pin_edit.setText(str(payload.get("pin") or "1234"))
-        self.pin2_edit.setText(str(payload.get("pin2") or "5678"))
         self.show_icons_check.setChecked(bool(payload.get("showIcons", True)))
 
         pause_cfg = payload.get("pause", {}) or {}
@@ -485,36 +708,78 @@ class AdminDialog(QDialog):
             self.service_table.insertRow(row_idx)
 
             name_edit = QLineEdit(str(svc.get("label") or svc.get("key") or ""))
+            name_edit.setMinimumHeight(58)
+            name_edit.setFont(app_font(19, bold=True))
+            name_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             self._register_focus_target(name_edit)
 
-            icon_combo = QComboBox()
-            icon_combo.setMinimumWidth(120)
+            icon_combo = CenteredIconComboBox()
+            icon_combo.setObjectName("IconOnlyCombo")
+            icon_combo.setMinimumWidth(112)
+            icon_combo.setMaximumWidth(112)
+            icon_combo.setMinimumHeight(74)
+            icon_combo.setFont(app_font(20, bold=True))
+            icon_combo.setIconSize(QSize(60, 60))
+            icon_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            icon_combo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             for icon_name in self.icon_options:
                 icon_fp = _icon_path(icon_name)
                 if icon_fp:
-                    icon_combo.addItem(QIcon(icon_fp), icon_name)
+                    icon_combo.addItem(QIcon(icon_fp), "")
                 else:
-                    icon_combo.addItem(icon_name)
+                    icon_combo.addItem(QIcon(), "")
+                icon_combo.setItemData(icon_combo.count() - 1, icon_name, Qt.ItemDataRole.UserRole)
             icon_val = str(svc.get("icon") or "")
             if icon_val and icon_val not in self.icon_options:
-                icon_combo.addItem(icon_val)
-            found_icon = icon_combo.findText(icon_val)
-            if found_icon >= 0:
-                icon_combo.setCurrentIndex(found_icon)
+                custom_icon_fp = _icon_path(icon_val)
+                icon_combo.addItem(QIcon(custom_icon_fp) if custom_icon_fp else QIcon(), "")
+                icon_combo.setItemData(icon_combo.count() - 1, icon_val, Qt.ItemDataRole.UserRole)
+            if icon_combo.count() == 0:
+                icon_combo.addItem(QIcon(), "")
+                icon_combo.setItemData(0, "", Qt.ItemDataRole.UserRole)
 
-            theme_combo = QComboBox()
-            theme_combo.setMinimumWidth(130)
-            for theme_name in THEME_COLORS.keys():
-                theme_combo.addItem(theme_name)
+            selected_icon_idx = 0
+            for i in range(icon_combo.count()):
+                if str(icon_combo.itemData(i, Qt.ItemDataRole.UserRole) or "") == icon_val:
+                    selected_icon_idx = i
+                    break
+            icon_combo.setCurrentIndex(selected_icon_idx)
+
+            theme_combo = CenteredIconComboBox()
+            theme_combo.setObjectName("IconOnlyCombo")
+            theme_combo.setMinimumWidth(112)
+            theme_combo.setMaximumWidth(112)
+            theme_combo.setMinimumHeight(74)
+            theme_combo.setFont(app_font(20, bold=True))
+            theme_combo.setIconSize(QSize(64, 38))
+            theme_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            theme_combo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            for theme_name, theme_values in THEME_COLORS.items():
+                swatch_color = "#4c88ff"
+                if isinstance(theme_values, tuple) and len(theme_values) > 1:
+                    swatch_color = str(theme_values[1])
+                theme_combo.addItem(self._make_color_swatch_icon(swatch_color), "")
+                theme_combo.setItemData(theme_combo.count() - 1, theme_name, Qt.ItemDataRole.UserRole)
             theme_val = str(svc.get("theme") or "suv")
-            found_theme = theme_combo.findText(theme_val)
-            theme_combo.setCurrentIndex(found_theme if found_theme >= 0 else 0)
+            selected_theme_idx = 0
+            for i in range(theme_combo.count()):
+                if str(theme_combo.itemData(i, Qt.ItemDataRole.UserRole) or "") == theme_val:
+                    selected_theme_idx = i
+                    break
+            theme_combo.setCurrentIndex(selected_theme_idx)
+
+            icon_holder = self._build_centered_service_cell(icon_combo)
+            theme_holder = self._build_centered_service_cell(theme_combo)
 
             seconds_edit = QLineEdit(str(_to_int(svc.get("seconds"), 120, 1)))
             seconds_edit.setValidator(QIntValidator(1, 999999))
+            seconds_edit.setMinimumHeight(58)
+            seconds_edit.setFont(app_font(21, bold=True))
+            seconds_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             self._register_focus_target(seconds_edit, numeric=True)
 
             active_check = QCheckBox()
+            active_check.setObjectName("SwitchCheck")
             active_check.setChecked(bool(svc.get("active", True)))
 
             active_holder = QWidget()
@@ -523,11 +788,11 @@ class AdminDialog(QDialog):
             active_layout.addWidget(active_check, alignment=Qt.AlignmentFlag.AlignCenter)
 
             self.service_table.setCellWidget(row_idx, 0, name_edit)
-            self.service_table.setCellWidget(row_idx, 1, icon_combo)
-            self.service_table.setCellWidget(row_idx, 2, theme_combo)
+            self.service_table.setCellWidget(row_idx, 1, icon_holder)
+            self.service_table.setCellWidget(row_idx, 2, theme_holder)
             self.service_table.setCellWidget(row_idx, 3, seconds_edit)
             self.service_table.setCellWidget(row_idx, 4, active_holder)
-            self.service_table.setRowHeight(row_idx, 58)
+            self.service_table.setRowHeight(row_idx, 112)
 
             self._service_rows.append(
                 {
@@ -540,7 +805,7 @@ class AdminDialog(QDialog):
                 }
             )
 
-        self._active_input = self.pin_edit
+        self._active_input = None
         self._update_keyboard_display()
 
     def _handle_virtual_key(self, key):
@@ -579,8 +844,6 @@ class AdminDialog(QDialog):
         name = "Matn"
         if target is self.pin_edit:
             name = "PIN"
-        elif target is self.pin2_edit:
-            name = "PIN 2"
         elif target is self.free_pause_edit:
             name = "Tekin pauza"
         elif target is self.paid_pause_edit:
@@ -610,8 +873,8 @@ class AdminDialog(QDialog):
         for row in self._service_rows:
             key = row["key"]
             label = (row["name_edit"].text() or key).strip()
-            icon = row["icon_combo"].currentText().strip()
-            theme = row["theme_combo"].currentText().strip() or "suv"
+            icon = str(row["icon_combo"].currentData(Qt.ItemDataRole.UserRole) or "").strip()
+            theme = str(row["theme_combo"].currentData(Qt.ItemDataRole.UserRole) or "suv").strip() or "suv"
             seconds = _to_int(row["seconds_edit"].text(), 120, 1)
             active = row["active_check"].isChecked()
 
@@ -631,7 +894,6 @@ class AdminDialog(QDialog):
 
         return {
             "pin": (self.pin_edit.text() or "1234").strip(),
-            "pin2": (self.pin2_edit.text() or "5678").strip(),
             "showIcons": self.show_icons_check.isChecked(),
             "totalButtons": len(services),
             "pause": {
