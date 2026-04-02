@@ -370,6 +370,7 @@ class PauseButton(QFrame):
         self.main_text.setMinimumWidth(1)
         self.main_text.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
 
+
         self.sub_text = QLabel("")
         self.sub_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
