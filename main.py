@@ -48,11 +48,11 @@ def main():
     from PyQt6.QtWidgets import QApplication
 
     from app.settings import app_font, register_montserrat_fonts
-    from app.ui.user import RotatedWindow
+    from app.ui.moykaui import RotatedWindow
 
     app = QApplication(sys.argv)
     register_montserrat_fonts()
-    app.setFont(app_font(11))
+    app.setFont(app_font(11, bold=True))
 
     window = RotatedWindow()
     window.show_ui()

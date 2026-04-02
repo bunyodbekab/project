@@ -382,5 +382,200 @@
     "service_name": "SUV",
     "earned": 84,
     "date": "2026-04-01 23:13:44"
+<<<<<<< HEAD
+=======
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 84,
+    "date": "2026-04-02 14:17:21"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 630,
+    "date": "2026-04-02 14:19:12"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 1008,
+    "date": "2026-04-02 14:36:20"
+  },
+  {
+    "service": "XIZMAT5",
+    "service_name": "XIZMAT5",
+    "earned": 84,
+    "date": "2026-04-02 16:34:57"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 9202,
+    "date": "2026-04-02 18:46:41"
+  },
+  {
+    "service": "XIZMAT2",
+    "service_name": "OSMOS",
+    "earned": 294,
+    "date": "2026-04-02 18:47:37"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 630,
+    "date": "2026-04-02 18:56:04"
+  },
+  {
+    "service": "PAUSE",
+    "service_name": "PAUZA",
+    "earned": 462,
+    "date": "2026-04-02 18:56:21"
+  },
+  {
+    "service": "PAUSE",
+    "service_name": "PAUZA",
+    "earned": 84,
+    "date": "2026-04-02 18:56:29"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 42,
+    "date": "2026-04-02 18:59:57"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 42,
+    "date": "2026-04-02 19:05:51"
+  },
+  {
+    "service": "PAUSE",
+    "service_name": "PAUZA",
+    "earned": 210,
+    "date": "2026-04-02 19:06:02"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 42,
+    "date": "2026-04-02 19:08:16"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 420,
+    "date": "2026-04-02 19:16:36"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 84,
+    "date": "2026-04-02 19:20:05"
+  },
+  {
+    "service": "PAUSE",
+    "service_name": "PAUZA",
+    "earned": 252,
+    "date": "2026-04-02 19:20:17"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 84,
+    "date": "2026-04-02 19:38:39"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 84,
+    "date": "2026-04-02 19:38:43"
+  },
+  {
+    "service": "XIZMAT2",
+    "service_name": "OSMOS",
+    "earned": 84,
+    "date": "2026-04-02 19:38:49"
+  },
+  {
+    "service": "PAUSE",
+    "service_name": "PAUZA",
+    "earned": 42,
+    "date": "2026-04-02 19:38:51"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 42,
+    "date": "2026-04-02 19:38:53"
+  },
+  {
+    "service": "PAUSE",
+    "service_name": "PAUZA",
+    "earned": 126,
+    "date": "2026-04-02 19:38:56"
+  },
+  {
+    "service": "XIZMAT3",
+    "service_name": "AKTIV PENA",
+    "earned": 3318,
+    "date": "2026-04-02 19:40:19"
+  },
+  {
+    "service": "XIZMAT2",
+    "service_name": "OSMOS",
+    "earned": 168,
+    "date": "2026-04-02 19:45:38"
+  },
+  {
+    "service": "PAUSE",
+    "service_name": "PAUZA",
+    "earned": 2226,
+    "date": "2026-04-02 19:46:37"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 42,
+    "date": "2026-04-02 19:46:38"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 84,
+    "date": "2026-04-02 19:46:47"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 42,
+    "date": "2026-04-02 19:50:19"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 42,
+    "date": "2026-04-02 19:52:59"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 42,
+    "date": "2026-04-02 19:56:40"
+  },
+  {
+    "service": "PAUSE",
+    "service_name": "PAUZA",
+    "earned": 9958,
+    "date": "2026-04-02 20:01:29"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 42,
+    "date": "2026-04-02 20:23:08"
+>>>>>>> temp-branch
   }
 ]

@@ -40,9 +40,9 @@ INPUT_GPIO_TO_SERVICE = {
 CHIP_NAME = "gpiochip1"
 LOW_BALANCE = 2000
 BLINK_WARN = 10
-DEBUG = False
+DEBUG = True
 
-FONT_FAMILY = "Arial"
+FONT_FAMILY = "font/Montserrat/static"
 
 
 def register_montserrat_fonts():
@@ -50,8 +50,22 @@ def register_montserrat_fonts():
 
     loaded_families = []
     font_files = [
-        os.path.join(FONT_DIR, "Montserrat-VariableFont_wght.ttf"),
-        os.path.join(FONT_DIR, "Montserrat-Italic-VariableFont_wght.ttf"),
+        os.path.join(FONT_DIR, "Montserrat-Black.ttf"),
+        os.path.join(FONT_DIR, "Montserrat-Bold.ttf"),
+        os.path.join(FONT_DIR, "Montserrat-ExtraBold.ttf"),
+        os.path.join(FONT_DIR, "Montserrat-Regular.ttf"),
+        os.path.join(FONT_DIR, "Montserrat-SemiBold.ttf"),
+        os.path.join(FONT_DIR, "Montserrat-Thin.ttf"),
+        os.path.join(FONT_DIR, "Montserrat-BlackItalic.ttf"),
+        os.path.join(FONT_DIR, "Montserrat-BoldItalic.ttf"),
+        os.path.join(FONT_DIR, "Montserrat-ExtraBoldItalic.ttf"),
+        os.path.join(FONT_DIR, "Montserrat-Italic.ttf"),
+        os.path.join(FONT_DIR, "Montserrat-Light.ttf"),
+        os.path.join(FONT_DIR, "Montserrat-LightItalic.ttf"),
+        os.path.join(FONT_DIR, "Montserrat-Medium.ttf"),
+        os.path.join(FONT_DIR, "Montserrat-MediumItalic.ttf"),
+        os.path.join(FONT_DIR, "Montserrat-SemiBoldItalic.ttf"),
+        os.path.join(FONT_DIR, "Montserrat-ThinItalic.ttf"),
     ]
 
     for fp in font_files:
