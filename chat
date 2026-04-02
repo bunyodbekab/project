@@ -1,2 +1,12 @@
-gpioset gpiochip0 227=1 75=1 79=1 78=1 71=1 233=1 74=1   # hammasini yoqish
-gpioset gpiochip0 227=0 75=0 79=0 78=0 71=0 233=0 74=0   # hammasini o‘chirish
+sudo apt update
+
+sudo apt install -y \
+libxcb-cursor0 \
+libxcb-xinerama0 \
+libxcb-icccm4 \
+libxcb-image0 \
+libxcb-keysyms1 \
+libxcb-render-util0 \
+libxcb-xkb1 \
+libxkbcommon-x11-0 \
+libgl1-mesa-glx
