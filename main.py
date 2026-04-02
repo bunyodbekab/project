@@ -4,6 +4,10 @@ import sys
 from pathlib import Path
 
 
+_QT_MSG_HANDLER = None
+_QT_PREV_MSG_HANDLER = None
+
+
 def _venv_python() -> Path:
     root = Path(__file__).resolve().parent
     if os.name == "nt":
@@ -38,12 +42,33 @@ def _force_qt_scale():
     os.environ.setdefault("QT_SCREEN_SCALE_FACTORS", "1")
 
 
+def _install_qt_message_filter():
+    global _QT_MSG_HANDLER, _QT_PREV_MSG_HANDLER
+
+    from PyQt6.QtCore import qInstallMessageHandler
+
+    def _handler(msg_type, context, message):
+        text = str(message or "")
+        if "This plugin does not support propagateSizeHints()" in text:
+            return
+
+        if _QT_PREV_MSG_HANDLER is not None:
+            _QT_PREV_MSG_HANDLER(msg_type, context, message)
+            return
+
+        sys.stderr.write(f"{text}\n")
+
+    _QT_MSG_HANDLER = _handler
+    _QT_PREV_MSG_HANDLER = qInstallMessageHandler(_QT_MSG_HANDLER)
+
+
 def main():
     delegated = _ensure_venv_runtime()
     if delegated is not None:
         return delegated
 
     _force_qt_scale()
+    _install_qt_message_filter()
 
     from PyQt6.QtWidgets import QApplication
 
