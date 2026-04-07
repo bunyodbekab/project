@@ -14,49 +14,96 @@ LATCH_PIN = 79   # SN74HC595N STCP (12-pin)
 
 CHIP_NAME = "gpiochip1"
 
+
+def chip_candidates(chip_name):
+    chip_name = str(chip_name)
+    candidates = [chip_name]
+
+    if chip_name.startswith("/dev/"):
+        short_name = chip_name[5:]
+        if short_name:
+            candidates.append(short_name)
+    else:
+        candidates.append(f"/dev/{chip_name}")
+
+    unique = []
+    seen = set()
+    for candidate in candidates:
+        if candidate not in seen:
+            seen.add(candidate)
+            unique.append(candidate)
+    return unique
+
 class ShiftRegisterTest:
     def __init__(self):
-        self.chip = gpiod.Chip(CHIP_NAME)
-        
-        # Pinlarni sozlash
-        self.data_line = self.chip.get_line(DATA_PIN)
-        self.data_line.request(consumer="test_data", type=gpiod.LINE_REQ_DIR_OUT, default_vals=[0])
-        
-        self.clock_line = self.chip.get_line(CLOCK_PIN)
-        self.clock_line.request(consumer="test_clock", type=gpiod.LINE_REQ_DIR_OUT, default_vals=[0])
-        
-        self.latch_line = self.chip.get_line(LATCH_PIN)
-        self.latch_line.request(consumer="test_latch", type=gpiod.LINE_REQ_DIR_OUT, default_vals=[0])
+        self.chip = None
+        self.request = self._request_lines_with_fallback(
+            consumer="shift-register-test",
+            config={
+                DATA_PIN: gpiod.LineSettings(
+                    direction=gpiod.line.Direction.OUTPUT,
+                    output_value=gpiod.line.Value.INACTIVE,
+                ),
+                CLOCK_PIN: gpiod.LineSettings(
+                    direction=gpiod.line.Direction.OUTPUT,
+                    output_value=gpiod.line.Value.INACTIVE,
+                ),
+                LATCH_PIN: gpiod.LineSettings(
+                    direction=gpiod.line.Direction.OUTPUT,
+                    output_value=gpiod.line.Value.INACTIVE,
+                ),
+            },
+        )
         
         print("Shift Register test tayyor")
         print(f"DATA: GPIO {DATA_PIN}")
         print(f"CLOCK: GPIO {CLOCK_PIN}")
         print(f"LATCH: GPIO {LATCH_PIN}")
+        print(f"CHIP: {self.chip}")
         print()
+
+    def _request_lines_with_fallback(self, consumer, config):
+        errors = []
+        for chip_name in chip_candidates(CHIP_NAME):
+            try:
+                request = gpiod.request_lines(
+                    chip_name,
+                    consumer=consumer,
+                    config=config,
+                )
+                self.chip = chip_name
+                return request
+            except Exception as e:
+                errors.append(f"{chip_name}: {e}")
+        raise RuntimeError(" | ".join(errors))
+
+    def _set_pin(self, gpio_pin, high):
+        value = gpiod.line.Value.ACTIVE if high else gpiod.line.Value.INACTIVE
+        self.request.set_value(gpio_pin, value)
 
     def shift_out(self, data_byte):
         """8-bitli ma'lumotni yuborish"""
         # Latch pastga
-        self.latch_line.set_value(0)
+        self._set_pin(LATCH_PIN, False)
         
         # 8 bitni yuborish (MSB first)
         for i in range(7, -1, -1):
             bit = (data_byte >> i) & 1
             
             # Clock pastga
-            self.clock_line.set_value(0)
+            self._set_pin(CLOCK_PIN, False)
             
             # Data o'rnatish
-            self.data_line.set_value(bit)
+            self._set_pin(DATA_PIN, bool(bit))
             
             # Clock yuqoriga (bit qabul qilinadi)
-            self.clock_line.set_value(1)
+            self._set_pin(CLOCK_PIN, True)
         
         # Clock pastga
-        self.clock_line.set_value(0)
+        self._set_pin(CLOCK_PIN, False)
         
         # Latch yuqoriga (chiqishga uzatish)
-        self.latch_line.set_value(1)
+        self._set_pin(LATCH_PIN, True)
         
         print(f"Yuborildi: {data_byte:08b} (decimal: {data_byte})")
 
@@ -132,7 +179,7 @@ class ShiftRegisterTest:
     def cleanup(self):
         """Tozalash va o'chirish"""
         self.shift_out(0x00)
-        self.chip.close()
+        self.request.release()
         print("\n\nTest yakunlandi. Chipset yopildi.")
 
 
