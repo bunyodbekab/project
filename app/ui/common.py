@@ -1,4 +1,5 @@
 ﻿import os
+import re
 from PyQt6.QtCore import QRectF, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFontMetrics, QIcon, QPixmap, QTransform
 from PyQt6.QtWidgets import (
@@ -74,6 +75,28 @@ def _theme_palette(theme_name):
     gradient = str(theme_meta.get("gradient_qss") or default_theme["gradient_qss"])
     border_color = str(theme_meta.get("border_color") or default_theme["border_color"])
     return gradient, border_color
+
+
+_HEX_COLOR_RE = re.compile(r"#[0-9a-fA-F]{6}")
+
+
+def _darken_hex(color_hex, amount=0.2):
+    amount = max(0.0, min(1.0, float(amount)))
+    factor = 1.0 - amount
+
+    color_hex = str(color_hex or "")
+    if not _HEX_COLOR_RE.fullmatch(color_hex):
+        return color_hex
+
+    r = int(color_hex[1:3], 16)
+    g = int(color_hex[3:5], 16)
+    b = int(color_hex[5:7], 16)
+    return f"#{int(r * factor):02x}{int(g * factor):02x}{int(b * factor):02x}"
+
+
+def _darken_gradient_qss(gradient_qss, amount=0.2):
+    gradient_qss = str(gradient_qss or "")
+    return _HEX_COLOR_RE.sub(lambda m: _darken_hex(m.group(0), amount=amount), gradient_qss)
 
 
 def _icon_path(icon_file):
@@ -154,10 +177,15 @@ class ServiceButton(QPushButton):
         self._icon_file = str(icon_file or "")
         self._show_icon = bool(show_icon)
         self._active = False
+        self._pulse_active = False
         self._base_font_px = 34
         self._min_font_px = 24
         self._max_font_px = 30
         self._icon_px = 70
+
+        self._pulse_timer = QTimer(self)
+        self._pulse_timer.setSingleShot(True)
+        self._pulse_timer.timeout.connect(self._clear_pulse)
 
         self.setObjectName("ServiceButton")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -188,6 +216,15 @@ class ServiceButton(QPushButton):
 
     def set_active(self, active):
         self._active = bool(active)
+        self._apply_style()
+
+    def pulse_click(self, duration_ms=140):
+        self._pulse_active = True
+        self._apply_style()
+        self._pulse_timer.start(max(60, int(duration_ms)))
+
+    def _clear_pulse(self):
+        self._pulse_active = False
         self._apply_style()
 
     def set_font_px(self, px):
@@ -230,15 +267,23 @@ class ServiceButton(QPushButton):
 
     def _apply_style(self):
         gradient, border_color = _theme_palette(self._theme)
-        active_border_color = "#f8fafc" if self._active else border_color
-        border_css = f"10px solid {active_border_color}"
+        pressed_gradient = _darken_gradient_qss(gradient, amount=0.2)
+        display_gradient = pressed_gradient if self._pulse_active else gradient
+        highlighted = self._active or self._pulse_active
+        active_border_color = "#f8fafc" if highlighted else border_color
+        border_width = "12px" if self._pulse_active else "10px"
+        border_css = f"{border_width} solid {active_border_color}"
 
         self.setStyleSheet(
             f"""
             QPushButton#ServiceButton {{
-                background: {gradient};
+                background: {display_gradient};
                 border: {border_css};
                 border-radius: 12px;
+            }}
+            QPushButton#ServiceButton:pressed {{
+                background: {pressed_gradient};
+                border: 12px solid #f8fafc;
             }}
             QLabel#ServiceText {{
                 color: #ffffff;
@@ -328,13 +373,19 @@ class PauseButton(QFrame):
         super().__init__(parent)
         self._active = False
         self._free = False
+        self._pressed_visual = False
         self._main_font_px = 56
         self._sub_font_px = 26
         self._mark_font_px = 38
+        self._label_text = "PAUZA"
+        self._sub_label_text = ""
         self._long_press_timer = QTimer()
         self._long_press_timer.setSingleShot(True)
         self._long_press_timer.timeout.connect(self._on_long_press_timeout)
         self._long_press_triggered = False
+        self._pulse_timer = QTimer(self)
+        self._pulse_timer.setSingleShot(True)
+        self._pulse_timer.timeout.connect(self._clear_pulse)
 
         self.setObjectName("PauseButton")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -407,9 +458,27 @@ class PauseButton(QFrame):
     def set_state(self, is_active, is_free, label, sub_label):
         self._active = bool(is_active)
         self._free = bool(is_free)
-        self.main_text.setText(label or "PAUZA")
-        self.sub_text.setText(sub_label or "")
-        self.sub_text.setVisible(bool(sub_label))
+        self._label_text = label or "PAUZA"
+        self._sub_label_text = sub_label or ""
+        self.main_text.setText(self._label_text)
+        self.sub_text.setText(self._sub_label_text)
+        self.sub_text.setVisible(bool(self._sub_label_text))
+
+        self._apply_style()
+
+    def pulse_click(self, duration_ms=160):
+        self._pressed_visual = True
+        self._apply_style()
+        self._pulse_timer.start(max(80, int(duration_ms)))
+
+    def _clear_pulse(self):
+        self._pressed_visual = False
+        self._apply_style()
+
+    def _apply_style(self):
+        self.main_text.setText(self._label_text)
+        self.sub_text.setText(self._sub_label_text)
+        self.sub_text.setVisible(bool(self._sub_label_text))
 
         if self._free:
             # Free pause - yellow
@@ -422,7 +491,13 @@ class PauseButton(QFrame):
             gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #f53a46, stop:1 #ed2435)"
             fg = "#ffffff"
 
-        border_width = "10px"
+        if self._pressed_visual:
+            border_color = "#f8fafc"
+            border_width = "12px"
+            gradient = _darken_gradient_qss(gradient, amount=0.2)
+        else:
+            border_width = "10px"
+
         main_font_px = self._main_font_px
         if self._free:
             # "TEKIN PAUZA" is longer; keep it smaller so button geometry stays stable.
@@ -452,6 +527,8 @@ class PauseButton(QFrame):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self._long_press_triggered = False
+            self._pressed_visual = True
+            self._apply_style()
             self._long_press_timer.start(2000)  # 2 seconds
             self.grabMouse()
             self.pressedSignal.emit()
@@ -460,6 +537,8 @@ class PauseButton(QFrame):
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self._long_press_timer.stop()
+            self._pressed_visual = False
+            self._apply_style()
             if QWidget.mouseGrabber() is self:
                 self.releaseMouse()
             self.releasedSignal.emit()

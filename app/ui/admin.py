@@ -1,6 +1,7 @@
 """Admin UI dialogs."""
 
 import math
+import subprocess
 from functools import partial
 
 from PyQt6.QtCore import QEvent, QSize, Qt
@@ -367,8 +368,20 @@ class AdminDialog(QDialog):
                 background: #20478f;
                 border-color: #7eaef8;
             }
+            QPushButton#RebootBtn {
+                background: #d97706;
+                border-color: #f59e0b;
+            }
+            QPushButton#ShutdownBtn {
+                background: #b91c1c;
+                border-color: #ef4444;
+            }
             QPushButton#SaveBtn, QPushButton#ResetBtn, QPushButton#CloseBtn {
                 font-size: 26px;
+                min-height: 78px;
+            }
+            QPushButton#RebootBtn, QPushButton#ShutdownBtn {
+                font-size: 24px;
                 min-height: 78px;
             }
             QPushButton#CloseTopBtn {
@@ -545,6 +558,18 @@ class AdminDialog(QDialog):
         close_btn.setMinimumHeight(82)
         close_btn.clicked.connect(self.accept)
 
+        reboot_btn = QPushButton("Reboot")
+        reboot_btn.setObjectName("RebootBtn")
+        reboot_btn.setMinimumHeight(82)
+        reboot_btn.clicked.connect(lambda: self._request_system_action("reboot"))
+
+        shutdown_btn = QPushButton("Shutdown")
+        shutdown_btn.setObjectName("ShutdownBtn")
+        shutdown_btn.setMinimumHeight(82)
+        shutdown_btn.clicked.connect(lambda: self._request_system_action("shutdown"))
+
+        footer.addWidget(reboot_btn)
+        footer.addWidget(shutdown_btn)
         footer.addWidget(reset_btn)
         footer.addWidget(save_btn)
         footer.addWidget(close_btn)
@@ -908,6 +933,43 @@ class AdminDialog(QDialog):
             },
             "services": services,
         }
+
+    def _request_system_action(self, action):
+        action = str(action or "").strip().lower()
+        if action not in ("reboot", "shutdown"):
+            return
+
+        action_label = "qayta yuklash" if action == "reboot" else "o'chirish"
+        answer = QMessageBox.question(
+            self,
+            "Tasdiqlang",
+            f"Qurilmani {action_label}ni xohlaysizmi?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        if action == "reboot":
+            commands = [["systemctl", "reboot"], ["reboot"]]
+        else:
+            commands = [["systemctl", "poweroff"], ["shutdown", "-h", "now"]]
+
+        last_error = None
+        for cmd in commands:
+            try:
+                subprocess.Popen(cmd)
+                self._set_status(f"Qurilma {action_label} buyrug'i yuborildi", "#f59e0b")
+                return
+            except Exception as exc:
+                last_error = exc
+
+        self._set_status(f"{action_label.title()} buyrug'i yuborilmadi", "#ef4444")
+        QMessageBox.warning(
+            self,
+            "Xatolik",
+            f"{action_label.title()} buyrug'ini yuborib bo'lmadi.\n{last_error}",
+        )
 
     def _set_status(self, text, color="#60a5fa"):
         self.status_label.setText(text)

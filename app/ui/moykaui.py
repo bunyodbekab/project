@@ -78,6 +78,8 @@ class MoykaUI(QWidget):
         self.input_timer.setInterval(100)
         self.input_timer.timeout.connect(self._poll_inputs)
         self._prev_input = {line: 0 for line in INPUT_GPIO_TO_SERVICE}
+        self._input_prime_left = 3
+        self._inputs_primed = False
         self.input_timer.start()
 
         self._service_buttons = {}
@@ -88,6 +90,7 @@ class MoykaUI(QWidget):
         self._setup_ui()
         self._rebuild_front_services()
         self._emit_state()
+        self._set_main_page_visible(True)
 
     def _setup_ui(self):
         # Match HTML/CSS clamp() calculations exactly
@@ -600,7 +603,7 @@ class MoykaUI(QWidget):
         show_icons = bool(self.cfg.get("show_icons", True))
         
         # Match HTML/CSS: .service-btn height: 12vh (reduced)
-        btn_height = int(self.h * 0.012)
+        btn_height = int(self.h * 0.12)
         
         # Match HTML/CSS: .service-label clamp(40.8px, 5.88vh, 79.2px)
         label_responsive = int(self.h * 0.0588)
@@ -620,6 +623,7 @@ class MoykaUI(QWidget):
                 show_icon=show_icons,
             )
             btn.setMinimumHeight(btn_height)
+            btn.setMaximumHeight(btn_height)
             btn.set_font_px(btn_font_px)
             btn.clicked.connect(partial(self.button_clicked, front_key))
 
@@ -630,7 +634,7 @@ class MoykaUI(QWidget):
 
         count = len(self.front_services)
         # Match HTML/CSS: .pause-button height: 12vh (reduced to match service buttons)
-        pause_height = int(self.h * 0.12)
+        pause_height = btn_height
         pause_text_responsive = int(self.h * 0.048)
         pause_main_px_raw = max(35, min(70, pause_text_responsive))
         pause_main_px = max(22, int(pause_main_px_raw / 1.2))
@@ -647,6 +651,9 @@ class MoykaUI(QWidget):
             self.service_grid.addWidget(self.pause_button, pause_row, 1)
         else:
             self.service_grid.addWidget(self.pause_button, pause_row, 0, 1, 2)
+
+        if self._main_page_shell.isVisible():
+            self._apply_user_cursor_visibility(True)
 
         self._grid_dirty = False
 
@@ -668,9 +675,16 @@ class MoykaUI(QWidget):
         self.header_main.setStyleSheet(
             f"font-weight: 800; letter-spacing: 0.6px; color: {header_color};"
         )
-        self.header_title.setFont(app_font(self._title_px, bold=True))
-        self.header_main.setFont(app_font(self._main_px, bold=True))
-        self._fit_header_fonts()
+
+        title_scale = 1.0
+        main_scale = 1.0
+        if mode in ("running", "pause"):
+            title_scale = 1.2
+            main_scale = 1.3
+
+        self.header_title.setFont(app_font(max(20, int(self._title_px * title_scale)), bold=True))
+        self.header_main.setFont(app_font(max(30, int(self._main_px * main_scale)), bold=True))
+        self._fit_header_fonts(title_scale=title_scale, main_scale=main_scale)
 
         active_front_key = state.get("activeService")
         for key, btn in self._service_buttons.items():
@@ -697,7 +711,7 @@ class MoykaUI(QWidget):
             px -= 1
         label.setFont(app_font(px, bold=True))
 
-    def _fit_header_fonts(self):
+    def _fit_header_fonts(self, title_scale=1.0, main_scale=1.0):
         if not hasattr(self, "top_panel"):
             return
         panel_w = max(1, self.top_panel.width())
@@ -706,8 +720,12 @@ class MoykaUI(QWidget):
 
         # Use the smaller panel side as a stable base so idle/balance states stay consistent.
         max_width = max(180, int(panel_w * 0.86))
-        title_px = min(self._title_px, max(26, int(size_ref * 0.13)))
-        main_px = min(self._main_px, max(42, int(size_ref * 0.19)))
+        title_target = max(20, int(self._title_px * max(1.0, float(title_scale))))
+        main_target = max(30, int(self._main_px * max(1.0, float(main_scale))))
+        title_cap = max(26, int(size_ref * 0.13 * max(1.0, float(title_scale))))
+        main_cap = max(42, int(size_ref * 0.19 * max(1.0, float(main_scale))))
+        title_px = min(title_target, title_cap)
+        main_px = min(main_target, main_cap)
         self._fit_label_font(self.header_title, self.header_title.text(), title_px, 20, max_width)
         self._fit_label_font(self.header_main, self.header_main.text(), main_px, 30, max_width)
 
@@ -848,7 +866,18 @@ class MoykaUI(QWidget):
         self._emit_state()
 
     def _set_main_page_visible(self, visible):
-        self._main_page_shell.setVisible(bool(visible))
+        visible = bool(visible)
+        self._main_page_shell.setVisible(visible)
+        self._apply_user_cursor_visibility(visible)
+
+    def _apply_user_cursor_visibility(self, hide_cursor):
+        cursor = Qt.CursorShape.BlankCursor if hide_cursor else Qt.CursorShape.ArrowCursor
+        self.setCursor(cursor)
+        self._main_page_shell.setCursor(cursor)
+        self.top_panel.setCursor(cursor)
+        self.pause_button.setCursor(cursor)
+        for btn in self._service_buttons.values():
+            btn.setCursor(cursor)
 
     def _wrap_page_container(self, page_widget):
         container = QWidget(self)
@@ -1045,12 +1074,22 @@ class MoykaUI(QWidget):
         QTimer.singleShot(700, reset_flash)
 
     def _poll_inputs(self):
+        if not self._inputs_primed:
+            for gpio_line in INPUT_GPIO_TO_SERVICE:
+                self._prev_input[gpio_line] = self.gpio.read_input(gpio_line)
+
+            self._input_prime_left = max(0, self._input_prime_left - 1)
+            if self._input_prime_left <= 0:
+                self._inputs_primed = True
+            return
+
         for gpio_line, svc_name in INPUT_GPIO_TO_SERVICE.items():
             val = self.gpio.read_input(gpio_line)
             prev = self._prev_input.get(gpio_line, 0)
 
             if svc_name == "STOP":
                 if val == 1 and prev == 0:
+                    self.pause_button.pulse_click()
                     self._on_stop_pressed("gpio")
                 elif val == 0 and prev == 1:
                     self._on_stop_released("gpio")
@@ -1059,6 +1098,9 @@ class MoykaUI(QWidget):
                     self.add_money(1000)
             elif val == 1 and prev == 0:
                 front_key = self.hw_to_front.get(svc_name, svc_name)
+                btn = self._service_buttons.get(front_key)
+                if btn:
+                    btn.pulse_click()
                 self.button_clicked(front_key)
 
             self._prev_input[gpio_line] = val
