@@ -834,7 +834,7 @@ class MoykaUI(QWidget):
         self._clear_active_page_widget()
 
         pins = [self.cfg.get("admin_pin", "1234")]
-        dialog = PinDialog(pins, self)
+        dialog = PinDialog(pins, self, on_clear_money=self._clear_money_and_time)
         dialog.setModal(False)
         dialog.setWindowFlags(Qt.WindowType.Widget)
         dialog.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -910,6 +910,23 @@ class MoykaUI(QWidget):
     def _on_pause_button_long_pressed(self):
         """Triggered when pause button is held for 2 seconds."""
         self._open_pin_modal()
+
+    def _clear_money_and_time(self):
+        if self.pause_mode:
+            self._stop_pause()
+        elif self.is_running:
+            self._stop_service(manual_pause=False)
+
+        self.balance = 0
+        self.remaining_sec = 0
+        self.show_timer_mode = False
+        self.pause_mode = False
+        self.pause_stage = "off"
+        self.pause_free_credit = self.pause_free_default
+        self.pause_free_left = self.pause_free_credit
+        self._bonus_awarded = False
+        self._emit_state()
+        self._check_blink()
 
     def _tick(self):
         if self.pause_mode:

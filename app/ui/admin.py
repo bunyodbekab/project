@@ -78,10 +78,11 @@ class CenteredIconComboBox(FallbackComboBox):
 
 
 class PinDialog(QDialog):
-    def __init__(self, allowed_pins, parent=None):
+    def __init__(self, allowed_pins, parent=None, on_clear_money=None):
         super().__init__(parent)
         self.allowed_pins = [str(p) for p in allowed_pins if str(p)]
         self._pin_value = ""
+        self.on_clear_money = on_clear_money
 
         self.setModal(False)
         self.setWindowTitle("Admin PIN")
@@ -119,6 +120,15 @@ class PinDialog(QDialog):
             }
             QPushButton#CancelBtn {
                 font-size: 30px;
+            }
+            QPushButton#ResetMoneyBtn {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #d04141, stop:1 #a93333);
+                border-color: rgba(255, 130, 130, 0.5);
+                color: #fff5f5;
+                font-size: 30px;
+            }
+            QPushButton#ResetMoneyBtn:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #a93333, stop:1 #812626);
             }
             QPushButton#DigitBtn {
                 font-size: 52px;
@@ -226,6 +236,13 @@ class PinDialog(QDialog):
 
         bottom_layout.addLayout(actions)
 
+        reset_money_btn = QPushButton("Pulni tozalash")
+        reset_money_btn.setObjectName("ResetMoneyBtn")
+        reset_money_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        reset_money_btn.setMinimumHeight(96)
+        reset_money_btn.clicked.connect(self._clear_money)
+        bottom_layout.addWidget(reset_money_btn)
+
         # Full-page split: top 35% PIN area, bottom 65% keypad area.
         root.addWidget(top_section, 35)
         root.addWidget(bottom_section, 65)
@@ -261,6 +278,12 @@ class PinDialog(QDialog):
         self.error_label.setText("Noto'g'ri PIN")
         self._pin_value = ""
         self._refresh_dots()
+
+    def _clear_money(self):
+        if callable(self.on_clear_money):
+            self.on_clear_money()
+        self._clear()
+        self.reject()
 
 
 class AdminDialog(QDialog):
