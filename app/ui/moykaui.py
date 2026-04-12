@@ -28,7 +28,7 @@ class MoykaUI(QWidget):
 
         self.cfg = load_config()
         relay_map = {
-            name: data.get("gpio_out", data.get("relay_bit", idx))
+            name: data.get("relay_bit", data.get("gpio_out", idx % 8))
             for idx, (name, data) in enumerate(self.cfg["services"].items())
         }
         self.gpio = GPIOController(relay_map)
@@ -339,6 +339,7 @@ class MoykaUI(QWidget):
         )
 
         total_buttons = raw.get("totalButtons") or raw.get("buttonCount") or len(norm_services) or len(self.cfg.get("services", {})) or 1
+        total_buttons = max(1, min(8, int(total_buttons)))
 
         show_icons = raw.get("showIcons")
         if show_icons is None:
@@ -391,7 +392,7 @@ class MoykaUI(QWidget):
 
         if self.front_settings:
             raw = self.front_settings.get("services", [])
-            total = max(1, self.front_settings.get("totalButtons") or len(raw) or len(self.cfg.get("services", {})) or 1)
+            total = max(1, min(8, self.front_settings.get("totalButtons") or len(raw) or len(self.cfg.get("services", {})) or 1))
             used = set()
             for svc in raw:
                 if not svc.get("active", True):
@@ -582,7 +583,7 @@ class MoykaUI(QWidget):
                     "price_per_sec": svc.get("price_per_sec", 1),
                     "secondsPer5000": max(1, math.ceil(5000 / max(1, svc.get("price_per_sec", 1)))),
                     "duration": svc.get("duration", 60),
-                    "gpio_out": svc.get("gpio_out"),
+                    "relay_bit": svc.get("relay_bit"),
                     "icon": svc.get("icon", ""),
                     "theme": svc.get("theme", "suv"),
                     "active": bool(svc.get("active", True)),

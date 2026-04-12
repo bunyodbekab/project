@@ -22,20 +22,24 @@ def _migrate_service_fields(data):
                 migrated[new] = data["services"].get(legacy, {})
         data["services"] = migrated
 
-    # migrate old relay_bit to gpio_out if present and fill new UI fields
+    # migrate output mapping to relay_bit and fill new UI fields
     for svc_name, svc_default in DEFAULT_CONFIG["services"].items():
         if svc_name not in data["services"]:
             data["services"][svc_name] = dict(svc_default)
             continue
         svc_cfg = data["services"][svc_name]
-        if "gpio_out" not in svc_cfg:
-            if "relay_bit" in svc_cfg:
-                svc_cfg["gpio_out"] = svc_cfg["relay_bit"]
+        if "relay_bit" not in svc_cfg:
+            gpio_out = svc_cfg.get("gpio_out")
+            if isinstance(gpio_out, int) and 0 <= gpio_out <= 7:
+                svc_cfg["relay_bit"] = gpio_out
             else:
-                svc_cfg["gpio_out"] = svc_default.get("gpio_out")
+                svc_cfg["relay_bit"] = svc_default.get("relay_bit", 0)
         for k, v in svc_default.items():
             if k not in svc_cfg:
                 svc_cfg[k] = v
+
+        # Keep legacy key out of runtime config so UI/controller use relay_bit consistently.
+        svc_cfg.pop("gpio_out", None)
 
 
 def load_config():
@@ -78,7 +82,6 @@ def load_config():
 
     # drop legacy keys
     data.pop("sessions", None)
-    data.pop("shift_register", None)
 
     return data
 

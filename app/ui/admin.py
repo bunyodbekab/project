@@ -746,6 +746,7 @@ class AdminDialog(QDialog):
                 }
             )
 
+        rows = rows[:8]
         self._populate_service_rows(rows)
 
     def _populate_service_rows(self, rows):
@@ -945,7 +946,7 @@ class AdminDialog(QDialog):
         return {
             "pin": (self.pin_edit.text() or "1234").strip(),
             "showIcons": self.show_icons_check.isChecked(),
-            "totalButtons": len(services),
+            "totalButtons": max(1, min(8, len(services))),
             "pause": {
                 "freeSeconds": free_pause,
                 "paidSecondsPer5000": paid_pause,

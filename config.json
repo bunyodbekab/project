@@ -4,7 +4,7 @@
       "display_name": "SUV",
       "price_per_sec": 42,
       "duration": 120,
-      "gpio_out": 227,
+      "relay_bit": 0,
       "icon": "suv.png",
       "theme": "suv",
       "active": true
@@ -13,7 +13,7 @@
       "display_name": "OSMOS",
       "price_per_sec": 42,
       "duration": 120,
-      "gpio_out": 75,
+      "relay_bit": 1,
       "icon": "osmos.png",
       "theme": "osmos",
       "active": true
@@ -22,7 +22,7 @@
       "display_name": "AKTIV PENA",
       "price_per_sec": 42,
       "duration": 120,
-      "gpio_out": 79,
+      "relay_bit": 2,
       "icon": "aktiv.png",
       "theme": "aktiv",
       "active": true
@@ -31,7 +31,7 @@
       "display_name": "PENA",
       "price_per_sec": 42,
       "duration": 120,
-      "gpio_out": 78,
+      "relay_bit": 3,
       "icon": "pena.png",
       "theme": "pena",
       "active": true
@@ -40,7 +40,7 @@
       "display_name": "NANO",
       "price_per_sec": 42,
       "duration": 120,
-      "gpio_out": 71,
+      "relay_bit": 4,
       "icon": "nano.png",
       "theme": "nano",
       "active": true
@@ -49,7 +49,7 @@
       "display_name": "VOSK",
       "price_per_sec": 42,
       "duration": 120,
-      "gpio_out": 233,
+      "relay_bit": 5,
       "icon": "vosk.png",
       "theme": "vosk",
       "active": true
@@ -58,11 +58,25 @@
       "display_name": "XIZMAT7",
       "price_per_sec": 42,
       "duration": 120,
-      "gpio_out": 74,
+      "relay_bit": 6,
       "icon": "osmos.png",
       "theme": "quritish",
       "active": true
+    },
+    "XIZMAT8": {
+      "display_name": "XIZMAT8",
+      "price_per_sec": 42,
+      "duration": 120,
+      "relay_bit": 7,
+      "icon": "suv.png",
+      "theme": "suv",
+      "active": true
     }
+  },
+  "shift_register": {
+    "data_pin": 227,
+    "clock_pin": 75,
+    "latch_pin": 79
   },
   "moyka_name": "MOYKA",
   "admin_pin": "1234",
