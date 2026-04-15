@@ -24,13 +24,14 @@ DEFAULT_CONFIG = {
     "show_icons": True,
     "bonus": {"percent": 0, "threshold": 0},
     "pause": {"freeSeconds": 5, "paidSecondsPer5000": 120},
-    "shift_register": {"data_pin": 227, "clock_pin": 75, "latch_pin": 79},
+    "shift_register": {"data_pin": 227, "clock_pin": 75, "latch_pin": 79, "relay_power_pin": 69},
 }
 
 SHIFT_REGISTER_PINS = {
     "data_pin": 227,
     "clock_pin": 75,
     "latch_pin": 79,
+    "relay_power_pin": 69,
 }
 
 # 1:1 mapping with 8 physical buttons (PUL = coin/acceptor pulse)

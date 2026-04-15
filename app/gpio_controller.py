@@ -26,6 +26,7 @@ class GPIOController:
         self.data_pin = int(shift_cfg.get("data_pin", 227))
         self.clock_pin = int(shift_cfg.get("clock_pin", 75))
         self.latch_pin = int(shift_cfg.get("latch_pin", 79))
+        self.relay_power_pin = int(shift_cfg.get("relay_power_pin", 69))
 
         self.chip = None
         self.out_bits = {}
@@ -34,6 +35,7 @@ class GPIOController:
         self.out_request = None
         self.in_request = None
         self.relay_state = 0
+        self._relay_power_enabled = False
 
         if self.debug:
             print("[DEBUG] Virtual GPIO rejimi yoqilgan. gpiod ishlatilmaydi.")
@@ -65,6 +67,11 @@ class GPIOController:
                 output_value=gpiod.line.Value.INACTIVE,
             ),
         }
+        if self.relay_power_pin not in out_config:
+            out_config[self.relay_power_pin] = gpiod.LineSettings(
+                direction=gpiod.line.Direction.OUTPUT,
+                output_value=gpiod.line.Value.INACTIVE,
+            )
 
         in_config = {}
         for gpio_line in INPUT_GPIO_TO_SERVICE:
@@ -89,6 +96,7 @@ class GPIOController:
                     config=in_config,
                 )
             self._shift_out(self.relay_state)
+            self._sync_relay_power()
             print(f"GPIO tayyor (gpiod 2.x). Chip: {self.chip}")
         except Exception as e:
             print(f"GPIO chip xatosi: {e}")
@@ -141,6 +149,9 @@ class GPIOController:
         for svc_name, relay_bit in ordered:
             on = 1 if getattr(self, "_virtual_state", {}).get(svc_name) else 0
             states.append(f"{svc_name}@bit{relay_bit}={'ON' if on else 'OFF'}")
+        states.append(
+            f"RELAY_PWR@{self.relay_power_pin}={'ON' if getattr(self, '_relay_power_enabled', False) else 'OFF'}"
+        )
         prefix = f"[DEBUG GPIO] {reason}: " if reason else "[DEBUG GPIO] "
         print(prefix + " | ".join(states))
 
@@ -149,6 +160,17 @@ class GPIOController:
             return
         value = gpiod.line.Value.ACTIVE if high else gpiod.line.Value.INACTIVE
         self.out_request.set_value(gpio_pin, value)
+
+    def _sync_relay_power(self):
+        enabled = bool(self.relay_state)
+        if self._relay_power_enabled == enabled:
+            return
+
+        self._relay_power_enabled = enabled
+        if self.debug or not self.out_request:
+            return
+
+        self._set_shift_pin(self.relay_power_pin, enabled)
 
     def _shift_out(self, data_byte):
         if self.debug or not self.out_request:
@@ -177,6 +199,8 @@ class GPIOController:
             if not hasattr(self, "_virtual_state"):
                 self._virtual_state = {}
             self._virtual_state[name] = bool(value)
+            self.relay_state = 1 if any(self._virtual_state.get(svc_name) for svc_name in self.relay_map) else 0
+            self._sync_relay_power()
             self._print_virtual_state(name)
             return
 
@@ -196,6 +220,7 @@ class GPIOController:
 
             self.out_states[name] = new_value
             self._shift_out(self.relay_state)
+            self._sync_relay_power()
         except Exception as e:
             print(f"GPIO set xato [{name}]: {e}")
 
@@ -216,6 +241,8 @@ class GPIOController:
                 self._virtual_state = {}
             for k in self.relay_map:
                 self._virtual_state[k] = False
+            self.relay_state = 0
+            self._sync_relay_power()
             self._print_virtual_state("Barchasi o'chdi")
             return
 
@@ -226,6 +253,7 @@ class GPIOController:
         for name in self.out_states:
             self.out_states[name] = False
         self._shift_out(self.relay_state)
+        self._sync_relay_power()
 
     def cleanup(self):
         self.all_off()

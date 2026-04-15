@@ -616,5 +616,35 @@
     "service_name": "AKTIV PENA",
     "earned": 588,
     "date": "2026-04-15 19:01:08"
+  },
+  {
+    "service": "XIZMAT7",
+    "service_name": "XIZMAT7",
+    "earned": 84,
+    "date": "2026-04-15 19:09:20"
+  },
+  {
+    "service": "XIZMAT8",
+    "service_name": "XIZMAT8",
+    "earned": 84,
+    "date": "2026-04-15 19:13:20"
+  },
+  {
+    "service": "XIZMAT4",
+    "service_name": "PENA",
+    "earned": 84,
+    "date": "2026-04-15 19:16:10"
+  },
+  {
+    "service": "XIZMAT7",
+    "service_name": "XIZMAT7",
+    "earned": 84,
+    "date": "2026-04-15 19:16:12"
+  },
+  {
+    "service": "PAUSE",
+    "service_name": "PAUZA",
+    "earned": 14832,
+    "date": "2026-04-15 19:22:57"
   }
 ]

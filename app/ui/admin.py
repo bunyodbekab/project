@@ -200,6 +200,13 @@ class PinDialog(QDialog):
         zero_btn.setObjectName("DigitBtn")
         zero_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         zero_btn.clicked.connect(partial(self._add_digit, "0"))
+
+        reset_money_btn = QPushButton("Pulni tozalash")
+        reset_money_btn.setObjectName("ResetMoneyBtn")
+        reset_money_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        reset_money_btn.clicked.connect(self._clear_money)
+
+        keypad.addWidget(reset_money_btn, 3, 0)
         keypad.addWidget(zero_btn, 3, 1)
 
         for row in range(4):
@@ -235,13 +242,6 @@ class PinDialog(QDialog):
         actions.addWidget(submit_btn)
 
         bottom_layout.addLayout(actions)
-
-        reset_money_btn = QPushButton("Pulni tozalash")
-        reset_money_btn.setObjectName("ResetMoneyBtn")
-        reset_money_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        reset_money_btn.setMinimumHeight(96)
-        reset_money_btn.clicked.connect(self._clear_money)
-        bottom_layout.addWidget(reset_money_btn)
 
         # Full-page split: top 35% PIN area, bottom 65% keypad area.
         root.addWidget(top_section, 35)
@@ -566,7 +566,7 @@ class AdminDialog(QDialog):
         self.status_label.setObjectName("StatusLabel")
         footer.addWidget(self.status_label, 1)
 
-        reset_btn = QPushButton("Standartga qaytarish")
+        reset_btn = QPushButton("Standart")
         reset_btn.setObjectName("ResetBtn")
         reset_btn.setMinimumHeight(82)
         reset_btn.clicked.connect(self._reset_defaults)

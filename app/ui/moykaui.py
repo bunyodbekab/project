@@ -75,7 +75,7 @@ class MoykaUI(QWidget):
         self.blink_timer.timeout.connect(self._blink)
 
         self.input_timer = QTimer(self)
-        self.input_timer.setInterval(100)
+        self.input_timer.setInterval(10)
         self.input_timer.timeout.connect(self._poll_inputs)
         self._prev_input = {line: 0 for line in INPUT_GPIO_TO_SERVICE}
         self._input_prime_left = 3
