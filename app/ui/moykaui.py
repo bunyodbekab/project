@@ -57,7 +57,7 @@ class MoykaUI(QWidget):
         self.blink_state = False
         self._low_balance_flash = False
         self._button_press_lock_until = 0.0
-        self._button_press_lock_sec = 1.0
+        self._button_press_lock_sec = 0.5
 
         self._pause_hold_timer = QTimer(self)
         self._pause_hold_timer.setSingleShot(True)
@@ -683,6 +683,9 @@ class MoykaUI(QWidget):
             title_scale = 1.2
             main_scale = 1.3
 
+        if mode == "running":
+            main_scale *= 1.1
+
         self.header_title.setFont(app_font(max(20, int(self._title_px * title_scale)), bold=True))
         self.header_main.setFont(app_font(max(30, int(self._main_px * main_scale)), bold=True))
         self._fit_header_fonts(title_scale=title_scale, main_scale=main_scale)
@@ -792,10 +795,20 @@ class MoykaUI(QWidget):
         self.active_front_key = front_key
         self.pause_mode = False
         self.pause_stage = "off"
+        # Charge one extra second on every accepted service button press
+        # so rapid switching cannot bypass time deduction.
+        press_charge = min(cost, self.balance)
+        self.balance -= press_charge
+        self.session_earned += press_charge
+        if self.balance <= 0:
+            self._stop_service(manual_pause=False)
+            return
+
         self.remaining_sec = math.ceil(self.balance / cost)
         self.is_running = True
         self.show_timer_mode = True
         self.session_earned = 0
+        self.session_earned += press_charge
 
         self._activate_pin(hw_key)
         self.service_timer.start()
@@ -1068,7 +1081,7 @@ class MoykaUI(QWidget):
         self._check_blink()
 
     def _check_blink(self):
-        should = (self.is_running or self.pause_mode) and (self.balance < LOW_BALANCE or self.remaining_sec <= BLINK_WARN)
+        should = (self.is_running or self.pause_mode) and (self.remaining_sec <= 3)
         if should and not self.blink_timer.isActive():
             self.blink_timer.start()
             self._emit_state()

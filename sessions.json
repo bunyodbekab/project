@@ -568,5 +568,53 @@
     "service_name": "PAUZA",
     "earned": 9958,
     "date": "2026-04-02 20:01:29"
+  },
+  {
+    "service": "XIZMAT3",
+    "service_name": "AKTIV PENA",
+    "earned": 23112,
+    "date": "2026-04-12 23:23:19"
+  },
+  {
+    "service": "XIZMAT2",
+    "service_name": "OSMOS",
+    "earned": 24748,
+    "date": "2026-04-12 23:46:42"
+  },
+  {
+    "service": "XIZMAT6",
+    "service_name": "VOSK",
+    "earned": 42,
+    "date": "2026-04-15 18:57:53"
+  },
+  {
+    "service": "XIZMAT8",
+    "service_name": "XIZMAT8",
+    "earned": 42,
+    "date": "2026-04-15 18:57:54"
+  },
+  {
+    "service": "XIZMAT8",
+    "service_name": "XIZMAT8",
+    "earned": 42,
+    "date": "2026-04-15 18:58:06"
+  },
+  {
+    "service": "PAUSE",
+    "service_name": "PAUZA",
+    "earned": 4662,
+    "date": "2026-04-15 19:00:47"
+  },
+  {
+    "service": "XIZMAT6",
+    "service_name": "VOSK",
+    "earned": 42,
+    "date": "2026-04-15 19:00:52"
+  },
+  {
+    "service": "XIZMAT3",
+    "service_name": "AKTIV PENA",
+    "earned": 588,
+    "date": "2026-04-15 19:01:08"
   }
 ]
