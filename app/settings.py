@@ -24,6 +24,7 @@ DEFAULT_CONFIG = {
     "show_icons": True,
     "bonus": {"percent": 0, "threshold": 0},
     "pause": {"freeSeconds": 5, "paidSecondsPer5000": 120},
+    "game": {"enabled": False, "minBalance": 10000, "rewardPerCorrect": 500},
     "shift_register": {"data_pin": 227, "clock_pin": 75, "latch_pin": 79, "relay_power_pin": 69},
 }
 

@@ -77,6 +77,17 @@ def load_config():
         data["pause"].setdefault("freeSeconds", 5)
         data["pause"].setdefault("paidSecondsPer5000", 120)
 
+    if "game" not in data:
+        data["game"] = {"enabled": False, "minBalance": 10000, "rewardPerCorrect": 500}
+    else:
+        if "minBalance" not in data["game"] and "min_balance" in data["game"]:
+            data["game"]["minBalance"] = data["game"].get("min_balance")
+        if "rewardPerCorrect" not in data["game"] and "reward_per_correct" in data["game"]:
+            data["game"]["rewardPerCorrect"] = data["game"].get("reward_per_correct")
+        data["game"].setdefault("enabled", False)
+        data["game"].setdefault("minBalance", 10000)
+        data["game"].setdefault("rewardPerCorrect", 500)
+
     if "show_icons" not in data:
         data["show_icons"] = True
 

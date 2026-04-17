@@ -8,8 +8,9 @@ from functools import partial
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFontMetrics
-from PyQt6.QtWidgets import QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QProgressBar, QSizePolicy, QVBoxLayout, QWidget
 
+from app.game_logic import MathGameGenerator
 from app.gpio_controller import GPIOController
 from app.settings import BLINK_WARN, DEBUG, DEFAULT_CONFIG, INPUT_GPIO_TO_SERVICE, LOW_BALANCE, app_font
 from app.storage import add_session, load_config, save_config
@@ -45,6 +46,37 @@ class MoykaUI(QWidget):
         self.pause_free_credit = 0
         self.pause_stage = "off"
 
+        self.game_engine = MathGameGenerator()
+        self.game_state = "idle"
+        self.game_title = ""
+        self.game_main_text = ""
+        self.game_reward_total = 0
+        self.game_correct_count = 0
+        self.game_progress_max = 10.0
+        self.game_progress_left = 0.0
+        self.game_drain_rate = 1.0
+        self.game_option_keys = []
+        self.game_option_map = {}
+        self.game_correct_answer = None
+        self.game_question_text = ""
+        self._game_ready_labels = [
+            ("O'YIN", True),
+            ("O'YIN-3", True),
+            ("O'YIN-2", True),
+            ("O'YIN-1", True),
+            ("PAUZA", False),
+        ]
+        self._game_ready_index = 0
+        self._game_ready_label = "PAUZA"
+        self._game_ready_can_start = False
+        self._game_cycle_consumed = False
+        self._game_countdown_steps = []
+        self._game_countdown_index = 0
+        self._pending_game_start = False
+        self._stop_long_triggered = False
+        self._game_feedback_busy = False
+        self._game_feedback_pending_action = ""
+
         self.balance = 0
         self.remaining_sec = 0
         self.active_service = None
@@ -66,6 +98,26 @@ class MoykaUI(QWidget):
         self._pause_hold_timer.timeout.connect(self._pause_hold_tick)
         self._stop_hold_source = None
         self._stop_hold_started = None
+
+        self._game_ready_timer = QTimer(self)
+        self._game_ready_timer.setInterval(1000)
+        self._game_ready_timer.timeout.connect(self._game_ready_tick)
+
+        self._game_countdown_timer = QTimer(self)
+        self._game_countdown_timer.setInterval(1000)
+        self._game_countdown_timer.timeout.connect(self._game_countdown_tick)
+
+        self._game_tick_timer = QTimer(self)
+        self._game_tick_timer.setInterval(100)
+        self._game_tick_timer.timeout.connect(self._game_tick)
+
+        self._game_end_timer = QTimer(self)
+        self._game_end_timer.setSingleShot(True)
+        self._game_end_timer.timeout.connect(self._finish_game_cleanup)
+
+        self._game_feedback_timer = QTimer(self)
+        self._game_feedback_timer.setSingleShot(True)
+        self._game_feedback_timer.timeout.connect(self._on_game_feedback_timeout)
 
         self.service_timer = QTimer(self)
         self.service_timer.setInterval(1000)
@@ -134,6 +186,21 @@ class MoykaUI(QWidget):
                 background: transparent;
                 border: none;
             }
+            QProgressBar#GameProgress {
+                background: rgba(15, 23, 42, 0.65);
+                border: 2px solid rgba(148, 163, 184, 0.45);
+                border-radius: 12px;
+                min-height: 24px;
+                max-height: 24px;
+                text-align: center;
+                color: #e2e8f0;
+                font-size: 15px;
+                font-weight: 800;
+            }
+            QProgressBar#GameProgress::chunk {
+                border-radius: 10px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #22c55e, stop:1 #16a34a);
+            }
             """
         )
 
@@ -169,20 +236,30 @@ class MoykaUI(QWidget):
         self.header_title = QLabel("XUSH KELIBSIZ")
         self.header_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.header_title.setWordWrap(True)
+        self.header_title.setMinimumHeight(max(50, int(self._top_panel_height * 0.18)))
         self.header_title.setStyleSheet("font-weight: 800; letter-spacing: 0.01em; color: #d9deeb; padding: 4px 12px; min-width: 200px;")
 
         self.header_main = QLabel(self.cfg.get("moyka_name", "MOYKA"))
         self.header_main.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.header_main.setWordWrap(True)
+        self.header_main.setMinimumHeight(max(72, int(self._top_panel_height * 0.24)))
         self.header_main.setStyleSheet("font-weight: 900; letter-spacing: 0.005em; color: #ffffff; padding: 4px 12px; min-width: 250px;")
 
         self.header_title.setFont(app_font(self._title_px, bold=True))
         self.header_main.setFont(app_font(self._main_px, bold=True))
+
+        self.game_progress = QProgressBar(self.top_panel)
+        self.game_progress.setObjectName("GameProgress")
+        self.game_progress.setRange(0, 1000)
+        self.game_progress.setValue(1000)
+        self.game_progress.setTextVisible(False)
+        self.game_progress.hide()
         
 
         top_layout.addStretch(1)
         top_layout.addWidget(self.header_title)
         top_layout.addWidget(self.header_main)
+        top_layout.addWidget(self.game_progress)
         top_layout.addStretch(1)
 
         self.divider = QFrame(self._main_page_container)
@@ -222,7 +299,7 @@ class MoykaUI(QWidget):
         self._root_layout.addWidget(self._main_page_shell, 1)
 
     def _on_top_panel_clicked(self):
-        if self.is_running or self.pause_mode:
+        if self.is_running or self.pause_mode or self._is_game_busy():
             return
         self.add_money(5000)
 
@@ -349,6 +426,29 @@ class MoykaUI(QWidget):
             or self.cfg.get("bonus", {}).get("threshold", 0)
         )
 
+        game_cfg_raw = raw.get("game") if isinstance(raw.get("game"), dict) else {}
+        game_enabled = bool(
+            raw.get("gameEnabled")
+            if raw.get("gameEnabled") is not None
+            else game_cfg_raw.get("enabled", (self.cfg.get("game") or {}).get("enabled", False))
+        )
+        game_min_balance = int(
+            raw.get("gameMinBalance")
+            or raw.get("game_min_balance")
+            or game_cfg_raw.get("minBalance")
+            or game_cfg_raw.get("min_balance")
+            or (self.cfg.get("game") or {}).get("minBalance", 10000)
+        )
+        game_reward = int(
+            raw.get("gameRewardPerCorrect")
+            or raw.get("game_reward_per_correct")
+            or game_cfg_raw.get("rewardPerCorrect")
+            or game_cfg_raw.get("reward_per_correct")
+            or (self.cfg.get("game") or {}).get("rewardPerCorrect", 500)
+        )
+        game_min_balance = max(0, game_min_balance)
+        game_reward = max(1, game_reward)
+
         total_buttons = raw.get("totalButtons") or raw.get("buttonCount") or len(norm_services) or len(self.cfg.get("services", {})) or 1
         total_buttons = max(1, min(8, int(total_buttons)))
 
@@ -363,6 +463,11 @@ class MoykaUI(QWidget):
             "pause": {"freeSeconds": free_sec, "paidSecondsPer5000": paid_sec},
             "services": norm_services,
             "bonus": {"percent": bonus_percent, "threshold": bonus_threshold},
+            "game": {
+                "enabled": game_enabled,
+                "minBalance": game_min_balance,
+                "rewardPerCorrect": game_reward,
+            },
         }
 
     def _apply_pause_settings(self):
@@ -381,6 +486,43 @@ class MoykaUI(QWidget):
         if self.balance <= 0 and not self.is_running and not self.pause_mode:
             self.pause_free_credit = self.pause_free_default
             self.pause_free_left = self.pause_free_credit
+
+    def _game_cfg(self):
+        cfg = self.cfg.get("game") if isinstance(self.cfg.get("game"), dict) else {}
+        return {
+            "enabled": bool(cfg.get("enabled", False)),
+            "minBalance": max(0, int(cfg.get("minBalance", cfg.get("min_balance", 10000)) or 0)),
+            "rewardPerCorrect": max(1, int(cfg.get("rewardPerCorrect", cfg.get("reward_per_correct", 500)) or 500)),
+        }
+
+    def _is_game_busy(self):
+        return self.game_state in ("countdown", "playing", "ended")
+
+    def _is_game_playing(self):
+        return self.game_state == "playing"
+
+    def _can_offer_game(self):
+        cfg = self._game_cfg()
+        if not cfg.get("enabled"):
+            return False
+        if self._game_cycle_consumed:
+            return False
+        if self.is_running or self.pause_mode:
+            return False
+        if self._active_page_widget is not None or self._pin_dialog_open:
+            return False
+        if self._is_game_busy():
+            return False
+        return self.balance > cfg.get("minBalance", 0)
+
+    def _game_option_front_keys(self):
+        keys = []
+        for slot in self.front_services:
+            key = slot.get("front_key")
+            if not key:
+                continue
+            keys.append(key)
+        return keys
 
     def _map_to_hw_service(self, svc, used):
         requested = (svc.get("name") or svc.get("key") or "").strip()
@@ -463,8 +605,298 @@ class MoykaUI(QWidget):
         self.price_per_sec = price_map
         self.front_key_to_hw = fk_to_hw
         self.hw_to_front = hw_to_fk
+        self.game_option_keys = self._game_option_front_keys()
         self._apply_pause_settings()
         self._grid_dirty = True
+
+    def _set_service_labels_default(self):
+        for key, btn in self._service_buttons.items():
+            slot = self.front_slots.get(key, {})
+            btn.set_game_mode(False)
+            btn.restore_default_icon_mode()
+            btn.set_label(slot.get("label", key), uppercase=True)
+            btn.set_available(bool(slot.get("is_available", True)))
+
+    def _set_game_option_labels(self, option_labels):
+        option_labels = option_labels or {}
+        for key, btn in self._service_buttons.items():
+            btn.set_show_icon(False)
+            btn.set_game_mode(True, "neutral")
+            btn.set_available(True)
+            btn.set_label(str(option_labels.get(key, "")), uppercase=False)
+
+    def _update_game_ready_cycle(self):
+        if self.balance <= 0 and not self._is_game_busy() and not self.is_running and not self.pause_mode:
+            self._game_cycle_consumed = False
+            self._game_ready_index = 0
+            self._game_ready_label = "PAUZA"
+            self._game_ready_can_start = False
+
+        if self._game_ready_timer.isActive():
+            if not self._can_offer_game():
+                self._game_ready_timer.stop()
+                self._game_ready_label = "PAUZA"
+                self._game_ready_can_start = False
+            return
+
+        if self._can_offer_game() and self._game_ready_index == 0:
+            self._game_ready_timer.start()
+            self._game_ready_tick()
+            return
+
+        self._game_ready_label = "PAUZA"
+        self._game_ready_can_start = False
+
+    def _game_ready_tick(self):
+        if not self._can_offer_game():
+            self._update_game_ready_cycle()
+            return
+
+        if self._game_ready_index >= len(self._game_ready_labels):
+            self._game_ready_timer.stop()
+            self._game_ready_label = "PAUZA"
+            self._game_ready_can_start = False
+            self._game_ready_index = 0
+            self._game_cycle_consumed = True
+            self._emit_state()
+            return
+
+        label, can_start = self._game_ready_labels[self._game_ready_index]
+        self._game_ready_label = str(label)
+        self._game_ready_can_start = bool(can_start)
+        self._game_ready_index += 1
+        self._emit_state()
+
+    def _sync_game_progress_bar(self):
+        if self.game_state != "playing":
+            self.game_progress.hide()
+            return
+
+        self.game_progress.show()
+        max_val = max(0.1, float(self.game_progress_max))
+        ratio = max(0.0, min(1.0, float(self.game_progress_left) / max_val))
+        self.game_progress.setValue(int(ratio * 1000))
+
+    def _start_game(self):
+        if not self._can_offer_game() or not self._game_ready_can_start:
+            return
+
+        option_keys = self._game_option_front_keys()
+        if len(option_keys) < 2:
+            self.game_state = "ended"
+            self.game_title = "O'YIN"
+            self.game_main_text = "KAMIDA 2 TA TUGMA KERAK"
+            self.game_reward_total = 0
+            self._emit_state()
+            self._game_end_timer.start(1800)
+            return
+
+        self._pending_game_start = False
+        self._pause_hold_timer.stop()
+        self._game_ready_timer.stop()
+        self._game_ready_can_start = False
+        self._game_ready_label = "PAUZA"
+        self._game_ready_index = 0
+        self._game_cycle_consumed = True
+        self._stop_hold_source = None
+        self._stop_hold_started = None
+        self._game_feedback_timer.stop()
+        self._game_feedback_busy = False
+        self._game_feedback_pending_action = ""
+
+        self.service_timer.stop()
+        self.blink_timer.stop()
+        self.blink_state = False
+
+        self.game_state = "countdown"
+        self.game_title = "O'YIN"
+        self.game_main_text = "3"
+        self.game_reward_total = 0
+        self.game_correct_count = 0
+        self.game_progress_max = 10.0
+        self.game_progress_left = self.game_progress_max
+        self.game_drain_rate = 1.0
+        self.game_option_keys = option_keys
+        self.game_option_map = {}
+        self.game_correct_answer = None
+        self.game_question_text = ""
+
+        self._game_countdown_steps = [
+            ("O'YIN", "3"),
+            ("O'YIN", "2"),
+            ("O'YIN", "1"),
+            ("O'YIN BOSHLANDI", ""),
+        ]
+        self._game_countdown_index = 0
+        self._set_game_option_labels({key: "-" for key in self.game_option_keys})
+
+        self._game_countdown_tick()
+        self._game_countdown_timer.start()
+
+    def _game_countdown_tick(self):
+        if self.game_state != "countdown":
+            self._game_countdown_timer.stop()
+            return
+
+        if self._game_countdown_index < len(self._game_countdown_steps):
+            title, main_text = self._game_countdown_steps[self._game_countdown_index]
+            self.game_title = str(title)
+            self.game_main_text = str(main_text)
+            self._game_countdown_index += 1
+            self._emit_state()
+            return
+
+        self._game_countdown_timer.stop()
+        self._start_game_play()
+
+    def _start_game_play(self):
+        if self.game_state != "countdown":
+            return
+
+        self.game_state = "playing"
+        self.game_progress_max = 8.0
+        self.game_progress_left = self.game_progress_max
+        self.game_drain_rate = 1.0
+
+        self._next_game_round()
+        self._game_tick_timer.start()
+        self._emit_state()
+
+    def _next_game_round(self):
+        if self.game_state != "playing":
+            return
+
+        option_count = max(2, len(self.game_option_keys))
+        round_data = self.game_engine.build_round(option_count=option_count, streak=self.game_correct_count)
+
+        option_labels = {}
+        option_values = {}
+        for idx, key in enumerate(self.game_option_keys):
+            value = int(round_data.options[idx])
+            option_labels[key] = str(value)
+            option_values[key] = value
+
+        self.game_question_text = round_data.expression
+        self.game_correct_answer = int(round_data.correct_answer)
+        self.game_option_map = option_values
+        self.game_title = f"BALANS: +{_format_money(self.game_reward_total)} SO'M"
+        self.game_main_text = self.game_question_text
+        self._set_game_option_labels(option_labels)
+
+    def _front_key_for_correct_answer(self):
+        for key, value in self.game_option_map.items():
+            if int(value) == int(self.game_correct_answer):
+                return key
+        return None
+
+    def _set_game_feedback(self, selected_key, correct_key, is_correct):
+        for key, btn in self._service_buttons.items():
+            if key == correct_key:
+                status = "correct"
+            else:
+                status = "wrong"
+            btn.set_game_mode(True, status)
+
+    def _on_game_feedback_timeout(self):
+        self._game_feedback_busy = False
+        action = self._game_feedback_pending_action
+        self._game_feedback_pending_action = ""
+
+        if action == "next" and self.game_state == "playing":
+            self._next_game_round()
+            self._emit_state()
+            return
+
+        if action == "end":
+            self._end_game()
+
+    def _handle_game_answer(self, front_key):
+        if self.game_state != "playing":
+            return
+
+        if self._game_feedback_busy:
+            return
+
+        answer = self.game_option_map.get(front_key)
+        if answer is None:
+            return
+
+        correct_key = self._front_key_for_correct_answer()
+
+        if int(answer) != int(self.game_correct_answer):
+            self._set_game_feedback(front_key, correct_key, is_correct=False)
+            self._game_feedback_busy = True
+            self._game_feedback_pending_action = "end"
+            self._game_feedback_timer.start(700)
+            self._emit_state()
+            return
+
+        reward = self._game_cfg().get("rewardPerCorrect", 500)
+        self.balance += reward
+        self.game_reward_total += reward
+        self.game_correct_count += 1
+
+        self.game_progress_left = min(self.game_progress_max + 2.5, self.game_progress_left + 1.7)
+        self.game_drain_rate = min(4.8, 1.0 + (self.game_correct_count * 0.18))
+
+        self._set_game_feedback(front_key, correct_key, is_correct=True)
+        self._game_feedback_busy = True
+        self._game_feedback_pending_action = "next"
+        self._game_feedback_timer.start(450)
+        self._emit_state()
+
+    def _game_tick(self):
+        if self.game_state != "playing":
+            self._game_tick_timer.stop()
+            return
+
+        self.game_progress_left = max(0.0, self.game_progress_left - (0.1 * self.game_drain_rate))
+        if self.game_progress_left <= 0.0:
+            self._end_game()
+            return
+
+        self._sync_game_progress_bar()
+
+    def _end_game(self):
+        if self.game_state not in ("countdown", "playing"):
+            return
+
+        self._game_feedback_timer.stop()
+        self._game_feedback_busy = False
+        self._game_feedback_pending_action = ""
+        self._game_countdown_timer.stop()
+        self._game_tick_timer.stop()
+
+        self.game_state = "ended"
+        self.game_title = "O'YIN TUGADI"
+        self.game_main_text = f"+{_format_money(self.game_reward_total)} SO'M"
+        self.game_option_map = {}
+        self.game_correct_answer = None
+
+        self._emit_state()
+        self._game_end_timer.start(2200)
+
+    def _finish_game_cleanup(self):
+        self._game_countdown_timer.stop()
+        self._game_tick_timer.stop()
+        self._game_end_timer.stop()
+        self._game_feedback_timer.stop()
+
+        self.game_state = "idle"
+        self.game_title = ""
+        self.game_main_text = ""
+        self.game_reward_total = 0
+        self.game_correct_count = 0
+        self.game_progress_left = 0.0
+        self.game_option_map = {}
+        self.game_correct_answer = None
+        self.game_question_text = ""
+        self._pending_game_start = False
+        self._stop_long_triggered = False
+        self._game_feedback_busy = False
+        self._game_feedback_pending_action = ""
+        self._set_service_labels_default()
+        self._emit_state()
 
     def update_front_settings(self, settings):
         norm = self._normalize_front_settings(settings)
@@ -487,6 +919,13 @@ class MoykaUI(QWidget):
         self.cfg["pause"] = {
             "freeSeconds": int(pause_cfg.get("freeSeconds", 0) or 0),
             "paidSecondsPer5000": int(pause_cfg.get("paidSecondsPer5000", 60) or 60),
+        }
+
+        game_cfg = norm.get("game", {}) or {}
+        self.cfg["game"] = {
+            "enabled": bool(game_cfg.get("enabled", False)),
+            "minBalance": int(game_cfg.get("minBalance", 10000) or 0),
+            "rewardPerCorrect": int(game_cfg.get("rewardPerCorrect", 500) or 500),
         }
 
         for svc in norm.get("services", []):
@@ -529,6 +968,8 @@ class MoykaUI(QWidget):
             return "#ff4d4d"
         if self.blink_timer.isActive() and self.blink_state:
             return "#ff4d4d"
+        if mode == "game":
+            return "#dcfce7"
         if mode == "pause":
             return "#ffd84d" if pause_status == "free" else "#ff4d4d"
         return "#ffffff"
@@ -544,7 +985,11 @@ class MoykaUI(QWidget):
             "label": "",
         }
 
-        if self.pause_mode:
+        if self._is_game_busy():
+            mode = "game"
+            title = self.game_title
+            main_text = self.game_main_text
+        elif self.pause_mode:
             mode = "pause"
             remaining = max(0, self.remaining_sec)
             pause_state["status"] = "free" if self.pause_stage == "free" else "paid"
@@ -593,6 +1038,7 @@ class MoykaUI(QWidget):
             "total_earned": self.cfg.get("total_earned", 0),
             "admin_pins": [self.cfg.get("admin_pin", "1234")],
             "bonus": self.cfg.get("bonus", {}),
+            "game": self.cfg.get("game", {}),
             "debug": bool(DEBUG),
         }
 
@@ -602,6 +1048,7 @@ class MoykaUI(QWidget):
             "showIcons": bool(self.cfg.get("show_icons", True)),
             "show_icons": bool(self.cfg.get("show_icons", True)),
             "bonus": self.cfg.get("bonus", {}),
+            "game": self.cfg.get("game", {}),
             "pause": self.cfg.get("pause", {}),
             "totalButtons": len(self.cfg.get("services", {})),
             "services": [
@@ -686,6 +1133,15 @@ class MoykaUI(QWidget):
         else:
             self.service_grid.addWidget(self.pause_button, pause_row, 0, 1, 2)
 
+        if self.game_state == "playing":
+            self._set_game_option_labels({k: str(v) for k, v in self.game_option_map.items()})
+        elif self.game_state == "countdown":
+            self._set_game_option_labels({key: "-" for key in self.game_option_keys})
+        elif self.game_state == "ended":
+            self._set_game_option_labels({})
+        else:
+            self._set_service_labels_default()
+
         if self._main_page_shell.isVisible():
             self._apply_user_cursor_visibility(True)
 
@@ -700,9 +1156,18 @@ class MoykaUI(QWidget):
         title = state.get("title", "")
         main_text = state.get("mainText", "")
         header_color = state.get("headerColor", "#ffffff")
+        is_balance_mode = mode == "idle" and title == "BALANS"
 
         self.header_title.setText(title)
-        self.header_main.setText(main_text)
+        if is_balance_mode:
+            money_text = _format_money(max(0, self.balance))
+            self.header_main.setTextFormat(Qt.TextFormat.RichText)
+            self.header_main.setText(
+                f"<div style='line-height:0.86;'>{money_text}<br><span style='font-size:0.34em;'>SO'M</span></div>"
+            )
+        else:
+            self.header_main.setTextFormat(Qt.TextFormat.PlainText)
+            self.header_main.setText(main_text)
         self.header_title.setStyleSheet(
             f"font-weight: 800; letter-spacing: 0.6px; color: {header_color};"
         )
@@ -715,13 +1180,30 @@ class MoykaUI(QWidget):
         if mode in ("running", "pause"):
             title_scale = 1.2
             main_scale = 1.3
+        elif mode == "game":
+            title_scale = 1.12
+            main_scale = 1.05
+
+        if is_balance_mode:
+            title_scale = 0.56
+            main_scale = 0.80
 
         if mode == "running":
             main_scale *= 1.1
 
         self.header_title.setFont(app_font(max(20, int(self._title_px * title_scale)), bold=True))
         self.header_main.setFont(app_font(max(30, int(self._main_px * main_scale)), bold=True))
-        self._fit_header_fonts(title_scale=title_scale, main_scale=main_scale)
+        if is_balance_mode:
+            max_width = max(180, int(max(1, self.top_panel.width()) * 0.86))
+            self._fit_label_font(
+                self.header_title,
+                self.header_title.text(),
+                max(14, int(self._title_px * title_scale)),
+                14,
+                max_width,
+            )
+        else:
+            self._fit_header_fonts(title_scale=title_scale, main_scale=main_scale)
 
         active_front_key = state.get("activeService")
         for key, btn in self._service_buttons.items():
@@ -731,9 +1213,21 @@ class MoykaUI(QWidget):
         is_pause = mode == "pause"
         is_free = pause_state.get("status") == "free"
         pause_label = pause_state.get("label") or ("TEKIN PAUZA" if is_free else "PAUZA")
-        # Keep pause timer internal; do not show countdown inside the pause button.
-        pause_sub = ""
-        self.pause_button.set_state(is_pause, is_free, pause_label, pause_sub)
+        if mode == "game":
+            self.pause_button.set_state(False, False, "O'YIN", "", mode="game")
+        elif is_pause:
+            # Keep pause timer internal; do not show countdown inside the pause button.
+            self.pause_button.set_state(True, is_free, pause_label, "", mode="pause")
+        elif self._can_offer_game():
+            ready_label = self._game_ready_label
+            if str(ready_label).startswith("O'YIN"):
+                self.pause_button.set_state(False, False, ready_label, "", mode="game")
+            else:
+                self.pause_button.set_state(False, False, "PAUZA", "", mode="pause")
+        else:
+            self.pause_button.set_state(False, False, "PAUZA", "", mode="pause")
+
+        self._sync_game_progress_bar()
 
     def _fit_label_font(self, label, text, target_px, min_px, max_width):
         text = str(text or "")
@@ -767,6 +1261,7 @@ class MoykaUI(QWidget):
         self._fit_label_font(self.header_main, self.header_main.text(), main_px, 30, max_width)
 
     def _emit_state(self):
+        self._update_game_ready_cycle()
         self._render_state()
 
     def add_money(self, amount=5000):
@@ -800,6 +1295,18 @@ class MoykaUI(QWidget):
         return self.front_slots.get(front_key)
 
     def button_clicked(self, front_key):
+        if self._is_game_playing():
+            if self._game_feedback_busy:
+                return
+            if self._buttons_locked():
+                return
+            self._lock_buttons(0.12)
+            self._handle_game_answer(front_key)
+            return
+
+        if self.game_state in ("countdown", "ended"):
+            return
+
         if self._buttons_locked():
             return
 
@@ -859,25 +1366,47 @@ class MoykaUI(QWidget):
         self._check_blink()
 
     def _on_stop_pressed(self, source="touch"):
+        if self._is_game_busy():
+            return
+
         if self._buttons_locked():
             return
-        self._lock_buttons()
+        self._lock_buttons(0.15)
+
+        self._stop_long_triggered = False
+        self._pending_game_start = False
+
+        if self._can_offer_game() and self._game_ready_can_start and not self.is_running and not self.pause_mode:
+            if source == "gpio":
+                self._start_game()
+                return
+            self._pending_game_start = True
 
         self._stop_hold_source = source
         self._stop_hold_started = time.monotonic()
-        self._pause_hold_timer.start()
+        if source == "touch":
+            self._pause_hold_timer.start()
+        else:
+            self._pause_hold_timer.stop()
         if self.is_running:
             self._stop_service(manual_pause=True)
 
     def _on_stop_released(self, source="touch"):
         self._pause_hold_timer.stop()
+
+        if self._pending_game_start and not self._stop_long_triggered:
+            self._pending_game_start = False
+            self._start_game()
+
         self._stop_hold_started = None
         self._stop_hold_source = None
 
     def _pause_hold_tick(self):
         self._pause_hold_timer.stop()
+        self._stop_long_triggered = True
+        self._pending_game_start = False
         # Open PIN only after a real long-press timeout from touch input.
-        if self._stop_hold_source == "touch" and not self.is_running:
+        if self._stop_hold_source == "touch" and not self.is_running and not self._is_game_busy():
             self._open_pin_modal()
         self._stop_hold_source = None
         self._stop_hold_started = None
@@ -969,6 +1498,8 @@ class MoykaUI(QWidget):
         self._open_pin_modal()
 
     def _clear_money_and_time(self):
+        if self._is_game_busy():
+            self._finish_game_cleanup()
         if self.pause_mode:
             self._stop_pause()
         elif self.is_running:
@@ -986,6 +1517,9 @@ class MoykaUI(QWidget):
         self._check_blink()
 
     def _tick(self):
+        if self._is_game_busy():
+            return
+
         if self.pause_mode:
             self._tick_pause()
             return
@@ -1217,6 +1751,11 @@ class MoykaUI(QWidget):
         super().keyPressEvent(event)
 
     def closeEvent(self, event):
+        self._game_ready_timer.stop()
+        self._game_countdown_timer.stop()
+        self._game_tick_timer.stop()
+        self._game_end_timer.stop()
+        self._game_feedback_timer.stop()
         self.gpio.cleanup()
         super().closeEvent(event)
 

@@ -485,17 +485,24 @@ class AdminDialog(QDialog):
         self.pin_edit = self._new_text_edit(max_len=6, digits_only=True)
         self.show_icons_check = QCheckBox("Iconlar ko'rsatish")
         self.show_icons_check.setObjectName("SwitchCheck")
+        self.game_enabled_check = QCheckBox("O'yin rejimi")
+        self.game_enabled_check.setObjectName("SwitchCheck")
         self.free_pause_edit = self._new_number_edit(0)
         self.paid_pause_edit = self._new_number_edit(1)
         self.bonus_percent_edit = self._new_number_edit(0)
         self.bonus_threshold_edit = self._new_number_edit(0)
+        self.game_min_balance_edit = self._new_number_edit(0)
+        self.game_reward_edit = self._new_number_edit(1)
 
         self._add_labeled_field(settings_layout, 0, 0, "PIN", self.pin_edit)
         self._add_labeled_field(settings_layout, 0, 1, "Tekin pauza (s)", self.free_pause_edit)
         self._add_labeled_field(settings_layout, 0, 2, "Pauza 5000 so'm (s)", self.paid_pause_edit)
         self._add_labeled_field(settings_layout, 0, 3, "Bonus %", self.bonus_percent_edit)
         self._add_labeled_field(settings_layout, 1, 0, "Bonus threshold (so'm)", self.bonus_threshold_edit)
-        settings_layout.addWidget(self.show_icons_check, 1, 1, 1, 3)
+        self._add_labeled_field(settings_layout, 1, 1, "O'yin min balans (so'm)", self.game_min_balance_edit)
+        self._add_labeled_field(settings_layout, 1, 2, "O'yin mukofot (so'm)", self.game_reward_edit)
+        settings_layout.addWidget(self.game_enabled_check, 1, 3)
+        settings_layout.addWidget(self.show_icons_check, 2, 0, 1, 4)
 
         root.addWidget(settings_card)
 
@@ -611,6 +618,8 @@ class AdminDialog(QDialog):
         self._register_focus_target(self.paid_pause_edit, numeric=True)
         self._register_focus_target(self.bonus_percent_edit, numeric=True)
         self._register_focus_target(self.bonus_threshold_edit, numeric=True)
+        self._register_focus_target(self.game_min_balance_edit, numeric=True)
+        self._register_focus_target(self.game_reward_edit, numeric=True)
 
         self._load_payload(self.ui_ref._settings_payload())
 
@@ -733,6 +742,8 @@ class AdminDialog(QDialog):
             self.paid_pause_edit,
             self.bonus_percent_edit,
             self.bonus_threshold_edit,
+            self.game_min_balance_edit,
+            self.game_reward_edit,
         ):
             widget.clearFocus()
         self.service_table.clearSelection()
@@ -754,6 +765,22 @@ class AdminDialog(QDialog):
         bonus_cfg = payload.get("bonus", {}) or {}
         self.bonus_percent_edit.setText(str(_to_int(bonus_cfg.get("percent", 0), 0, 0)))
         self.bonus_threshold_edit.setText(str(_to_int(bonus_cfg.get("threshold", 0), 0, 0)))
+
+        game_cfg = payload.get("game", {}) or {}
+        game_enabled = bool(game_cfg.get("enabled", False))
+        game_min_balance = _to_int(
+            game_cfg.get("minBalance", game_cfg.get("min_balance", 10000)),
+            10000,
+            0,
+        )
+        game_reward = _to_int(
+            game_cfg.get("rewardPerCorrect", game_cfg.get("reward_per_correct", 500)),
+            500,
+            1,
+        )
+        self.game_enabled_check.setChecked(game_enabled)
+        self.game_min_balance_edit.setText(str(game_min_balance))
+        self.game_reward_edit.setText(str(game_reward))
 
         self.total_label.setText(f"Jami: {_format_money(self.ui_ref.cfg.get('total_earned', 0))} so'm")
 
@@ -964,6 +991,10 @@ class AdminDialog(QDialog):
             name = "Bonus %"
         elif target is self.bonus_threshold_edit:
             name = "Bonus threshold"
+        elif target is self.game_min_balance_edit:
+            name = "O'yin min balans"
+        elif target is self.game_reward_edit:
+            name = "O'yin mukofot"
 
         if bool(target.property("pin")):
             raw = target.text()
@@ -980,6 +1011,8 @@ class AdminDialog(QDialog):
         paid_pause = _to_int(self.paid_pause_edit.text(), 120, 1)
         bonus_percent = _to_int(self.bonus_percent_edit.text(), 0, 0)
         bonus_threshold = _to_int(self.bonus_threshold_edit.text(), 0, 0)
+        game_min_balance = _to_int(self.game_min_balance_edit.text(), 10000, 0)
+        game_reward = _to_int(self.game_reward_edit.text(), 500, 1)
 
         services = []
         for row in self._service_rows:
@@ -1017,6 +1050,11 @@ class AdminDialog(QDialog):
             "bonus": {
                 "percent": bonus_percent,
                 "threshold": bonus_threshold,
+            },
+            "game": {
+                "enabled": self.game_enabled_check.isChecked(),
+                "minBalance": game_min_balance,
+                "rewardPerCorrect": game_reward,
             },
             "services": services,
         }

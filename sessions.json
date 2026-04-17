@@ -670,5 +670,35 @@
     "service_name": "PAUZA",
     "earned": 3740,
     "date": "2026-04-17 13:53:12"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 42,
+    "date": "2026-04-17 15:00:09"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 462,
+    "date": "2026-04-17 15:00:22"
+  },
+  {
+    "service": "XIZMAT4",
+    "service_name": "PENA",
+    "earned": 84,
+    "date": "2026-04-17 15:00:31"
+  },
+  {
+    "service": "XIZMAT1",
+    "service_name": "SUV",
+    "earned": 1680,
+    "date": "2026-04-17 16:47:32"
+  },
+  {
+    "service": "PAUSE",
+    "service_name": "PAUZA",
+    "earned": 7938,
+    "date": "2026-04-17 16:51:31"
   }
 ]

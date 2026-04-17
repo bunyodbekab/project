@@ -87,16 +87,21 @@
     "latch_pin": 79
   },
   "moyka_name": "MOYKA",
-  "admin_pin": "1234",
-  "admin_pin_alt": "1234",
+  "admin_pin": "1235",
+  "admin_pin_alt": "1235",
   "bonus": {
     "percent": 0,
     "threshold": 0
   },
-  "total_earned": 372521,
+  "total_earned": 382727,
   "pause": {
     "freeSeconds": 50,
     "paidSecondsPer5000": 120
+  },
+  "game": {
+    "enabled": true,
+    "minBalance": 9000,
+    "rewardPerCorrect": 500
   },
   "show_icons": true
 }

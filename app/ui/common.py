@@ -211,9 +211,12 @@ class ServiceButton(QPushButton):
         self._theme = str(theme or "suv")
         self._icon_file = str(icon_file or "")
         self._show_icon = bool(show_icon)
+        self._show_icon_default = bool(show_icon)
         self._available = True
         self._active = False
         self._pulse_active = False
+        self._in_game_mode = False
+        self._game_feedback = "neutral"
         self._base_font_px = 34
         self._min_font_px = 24
         self._max_font_px = 30
@@ -289,6 +292,25 @@ class ServiceButton(QPushButton):
         self._apply_style()
         self._fit_text_font()
 
+    def set_label(self, label_text, uppercase=False):
+        text = str(label_text or "")
+        if uppercase:
+            text = text.upper()
+        self.text_label.setText(text)
+        self._fit_text_font()
+
+    def set_show_icon(self, show_icon):
+        self._show_icon = bool(show_icon)
+        self._update_icon()
+
+    def restore_default_icon_mode(self):
+        self.set_show_icon(self._show_icon_default)
+
+    def set_game_mode(self, enabled, feedback="neutral"):
+        self._in_game_mode = bool(enabled)
+        self._game_feedback = str(feedback or "neutral")
+        self._apply_style()
+
     def _update_icon(self):
         if not self._show_icon:
             self.icon_label.clear()
@@ -318,7 +340,25 @@ class ServiceButton(QPushButton):
         self.icon_label.setFixedWidth(slot_width)
 
     def _apply_style(self):
-        if self._available:
+        if self._in_game_mode:
+            if self._game_feedback == "correct":
+                display_gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #16a34a, stop:1 #15803d)"
+                border_css = "10px solid #bbf7d0"
+                pressed_border_css = "12px solid #dcfce7"
+            elif self._game_feedback == "wrong":
+                display_gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #dc2626, stop:1 #b91c1c)"
+                border_css = "10px solid #fecaca"
+                pressed_border_css = "12px solid #fee2e2"
+            else:
+                display_gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1d4ed8, stop:1 #1e40af)"
+                border_css = "10px solid #bfdbfe"
+                pressed_border_css = "12px solid #dbeafe"
+
+            pressed_gradient = _darken_gradient_qss(display_gradient, amount=0.2)
+            if self._pulse_active:
+                display_gradient = pressed_gradient
+            text_color = "#ffffff"
+        elif self._available:
             gradient, border_color = _theme_palette(self._theme)
             pressed_gradient = _darken_gradient_qss(gradient, amount=0.2)
             display_gradient = pressed_gradient if self._pulse_active else gradient
@@ -361,7 +401,7 @@ class ServiceButton(QPushButton):
             """
         )
 
-        self._unavailable_overlay.setVisible(not self._available)
+        self._unavailable_overlay.setVisible((not self._available) and (not self._in_game_mode))
         self._unavailable_overlay.raise_()
 
     def _fit_text_font(self):
@@ -452,6 +492,8 @@ class PauseButton(QFrame):
         self._mark_font_px = 38
         self._label_text = "PAUZA"
         self._sub_label_text = ""
+        self._mode = "pause"
+        self._stop_icon_path = _icon_path("⛔.png")
         self._long_press_timer = QTimer()
         self._long_press_timer.setSingleShot(True)
         self._long_press_timer.timeout.connect(self._on_long_press_timeout)
@@ -477,7 +519,7 @@ class PauseButton(QFrame):
         self.right_mark.setFixedSize(48, 48)
         
         # Load stop icon
-        icon_path = _icon_path("⛔.png")
+        icon_path = self._stop_icon_path
         if icon_path:
             pixmap = QPixmap(icon_path).scaled(48, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             self.left_mark.setPixmap(pixmap)
@@ -490,7 +532,7 @@ class PauseButton(QFrame):
 
         self.main_text = QLabel("PAUZA")
         self.main_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.main_text.setWordWrap(True)
+        self.main_text.setWordWrap(False)
         self.main_text.setMinimumWidth(1)
         self.main_text.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
 
@@ -516,7 +558,7 @@ class PauseButton(QFrame):
         
         # Keep pause markers at the exact size passed from the service icon sizing logic.
         mark_size = self._mark_font_px
-        icon_path = _icon_path("⛔.png")
+        icon_path = self._stop_icon_path
         if icon_path:
             pixmap = QPixmap(icon_path).scaled(mark_size, mark_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             self.left_mark.setPixmap(pixmap)
@@ -528,11 +570,12 @@ class PauseButton(QFrame):
         self.main_text.setFont(app_font(self._main_font_px, bold=True))
         self.sub_text.setFont(app_font(self._sub_font_px, bold=True))
 
-    def set_state(self, is_active, is_free, label, sub_label):
+    def set_state(self, is_active, is_free, label, sub_label, mode="pause"):
         self._active = bool(is_active)
         self._free = bool(is_free)
         self._label_text = label or "PAUZA"
         self._sub_label_text = sub_label or ""
+        self._mode = str(mode or "pause")
         self.main_text.setText(self._label_text)
         self.sub_text.setText(self._sub_label_text)
         self.sub_text.setVisible(bool(self._sub_label_text))
@@ -553,7 +596,15 @@ class PauseButton(QFrame):
         self.sub_text.setText(self._sub_label_text)
         self.sub_text.setVisible(bool(self._sub_label_text))
 
-        if self._free:
+        show_marks = self._mode != "game"
+        self.left_mark.setVisible(show_marks)
+        self.right_mark.setVisible(show_marks)
+
+        if self._mode == "game":
+            border_color = "#d9f99d" if self._active else "#84cc16"
+            gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #65a30d, stop:1 #4d7c0f)"
+            fg = "#f7fee7"
+        elif self._free:
             # Free pause - yellow
             border_color = "#f1c232"
             gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ffd84d, stop:1 #f7c534)"
@@ -575,6 +626,9 @@ class PauseButton(QFrame):
         if self._free:
             # "TEKIN PAUZA" is longer; keep it smaller so button geometry stays stable.
             main_font_px = max(16, int(self._main_font_px * 0.56))
+        elif self._mode == "game" and "-" in self._label_text:
+            # Keep O'YIN-3/2/1 on a single line in narrow button layouts.
+            main_font_px = max(16, int(self._main_font_px * 0.72))
 
         self.setStyleSheet(
             f"""
