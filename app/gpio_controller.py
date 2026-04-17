@@ -74,12 +74,23 @@ class GPIOController:
             )
 
         in_config = {}
-        for gpio_line in INPUT_GPIO_TO_SERVICE:
+        for gpio_line, svc_name in INPUT_GPIO_TO_SERVICE.items():
             try:
                 gpio_line = int(gpio_line)
-                in_config[gpio_line] = gpiod.LineSettings(
-                    direction=gpiod.line.Direction.INPUT,
-                )
+
+                line_settings_kwargs = {
+                    "direction": gpiod.line.Direction.INPUT,
+                }
+
+                # Service buttons are wired with pull-up and active-low logic.
+                if str(svc_name).startswith("XIZMAT"):
+                    try:
+                        line_settings_kwargs["bias"] = gpiod.line.Bias.PULL_UP
+                    except Exception:
+                        pass
+                    line_settings_kwargs["active_low"] = True
+
+                in_config[gpio_line] = gpiod.LineSettings(**line_settings_kwargs)
                 self.in_lines[gpio_line] = gpio_line
             except Exception as e:
                 print(f"In GPIO [line={gpio_line}]: {e}")
@@ -189,6 +200,17 @@ class GPIOController:
 
         self._set_shift_pin(self.clock_pin, False)
         self._set_shift_pin(self.latch_pin, True)
+
+    def refresh_relay_outputs(self):
+        """Re-apply current relay state to hardware without changing ON/OFF bits."""
+        if self.debug or not self.out_request:
+            return
+
+        try:
+            self._shift_out(self.relay_state)
+            self._sync_relay_power()
+        except Exception as e:
+            print(f"GPIO refresh xato: {e}")
 
     def set_pin(self, name, value):
         if name not in self.relay_map:

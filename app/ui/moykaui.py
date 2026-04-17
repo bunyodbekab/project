@@ -78,6 +78,9 @@ class MoykaUI(QWidget):
         self.input_timer.setInterval(10)
         self.input_timer.timeout.connect(self._poll_inputs)
         self._prev_input = {line: 0 for line in INPUT_GPIO_TO_SERVICE}
+        self._raw_input = {line: 0 for line in INPUT_GPIO_TO_SERVICE}
+        self._raw_input_changed_at = {line: 0.0 for line in INPUT_GPIO_TO_SERVICE}
+        self._service_debounce_ms = 70
         self._input_prime_left = 3
         self._inputs_primed = False
         self.input_timer.start()
@@ -1105,18 +1108,38 @@ class MoykaUI(QWidget):
         QTimer.singleShot(700, reset_flash)
 
     def _poll_inputs(self):
+        # Keep relay outputs latched according to current state every poll cycle.
+        self.gpio.refresh_relay_outputs()
+
         if not self._inputs_primed:
+            now = time.monotonic()
             for gpio_line in INPUT_GPIO_TO_SERVICE:
-                self._prev_input[gpio_line] = self.gpio.read_input(gpio_line)
+                val = self.gpio.read_input(gpio_line)
+                self._prev_input[gpio_line] = val
+                self._raw_input[gpio_line] = val
+                self._raw_input_changed_at[gpio_line] = now
 
             self._input_prime_left = max(0, self._input_prime_left - 1)
             if self._input_prime_left <= 0:
                 self._inputs_primed = True
             return
 
+        now = time.monotonic()
         for gpio_line, svc_name in INPUT_GPIO_TO_SERVICE.items():
-            val = self.gpio.read_input(gpio_line)
+            raw_val = self.gpio.read_input(gpio_line)
+            if raw_val != self._raw_input.get(gpio_line, raw_val):
+                self._raw_input[gpio_line] = raw_val
+                self._raw_input_changed_at[gpio_line] = now
+
             prev = self._prev_input.get(gpio_line, 0)
+            val = raw_val
+
+            if str(svc_name).startswith("XIZMAT"):
+                last_change = self._raw_input_changed_at.get(gpio_line, now)
+                if (now - last_change) * 1000.0 < self._service_debounce_ms:
+                    val = prev
+                else:
+                    val = self._raw_input.get(gpio_line, raw_val)
 
             if svc_name == "STOP":
                 if val == 1 and prev == 0:
