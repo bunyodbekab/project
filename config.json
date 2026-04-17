@@ -7,7 +7,8 @@
       "relay_bit": 0,
       "icon": "suv.png",
       "theme": "suv",
-      "active": true
+      "active": true,
+      "is_available": true
     },
     "XIZMAT2": {
       "display_name": "OSMOS",
@@ -16,7 +17,8 @@
       "relay_bit": 1,
       "icon": "osmos.png",
       "theme": "osmos",
-      "active": true
+      "active": true,
+      "is_available": false
     },
     "XIZMAT3": {
       "display_name": "AKTIV PENA",
@@ -25,7 +27,8 @@
       "relay_bit": 2,
       "icon": "aktiv.png",
       "theme": "aktiv",
-      "active": true
+      "active": true,
+      "is_available": true
     },
     "XIZMAT4": {
       "display_name": "PENA",
@@ -34,7 +37,8 @@
       "relay_bit": 3,
       "icon": "pena.png",
       "theme": "pena",
-      "active": true
+      "active": true,
+      "is_available": true
     },
     "XIZMAT5": {
       "display_name": "NANO",
@@ -43,7 +47,8 @@
       "relay_bit": 4,
       "icon": "nano.png",
       "theme": "nano",
-      "active": true
+      "active": true,
+      "is_available": true
     },
     "XIZMAT6": {
       "display_name": "VOSK",
@@ -52,7 +57,8 @@
       "relay_bit": 5,
       "icon": "vosk.png",
       "theme": "vosk",
-      "active": true
+      "active": true,
+      "is_available": false
     },
     "XIZMAT7": {
       "display_name": "XIZMAT7",
@@ -61,7 +67,8 @@
       "relay_bit": 6,
       "icon": "osmos.png",
       "theme": "quritish",
-      "active": true
+      "active": false,
+      "is_available": false
     },
     "XIZMAT8": {
       "display_name": "XIZMAT8",
@@ -70,7 +77,8 @@
       "relay_bit": 7,
       "icon": "suv.png",
       "theme": "suv",
-      "active": true
+      "active": false,
+      "is_available": false
     }
   },
   "shift_register": {
@@ -85,7 +93,7 @@
     "percent": 0,
     "threshold": 0
   },
-  "total_earned": 367563,
+  "total_earned": 372521,
   "pause": {
     "freeSeconds": 50,
     "paidSecondsPer5000": 120

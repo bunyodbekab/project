@@ -35,6 +35,7 @@ class MoykaUI(QWidget):
 
         self.front_settings = None
         self.front_services = []
+        self.front_slots = {}
         self.front_key_to_hw = {}
         self.hw_to_front = {}
         self.price_per_sec = {}
@@ -285,6 +286,12 @@ class MoykaUI(QWidget):
                     "icon": str(svc.get("icon") or svc.get("icon_file") or cfg_svc.get("icon") or ""),
                     "showIcon": bool(svc.get("showIcon", True)),
                     "active": bool(svc.get("active", cfg_svc.get("active", True))),
+                    "is_available": bool(
+                        svc.get(
+                            "is_available",
+                            svc.get("isAvailable", cfg_svc.get("is_available", True)),
+                        )
+                    ),
                     "secondsPer5000": seconds,
                 }
             )
@@ -302,6 +309,7 @@ class MoykaUI(QWidget):
                     "icon": str(cfg_svc.get("icon", "")),
                     "showIcon": True,
                     "active": bool(cfg_svc.get("active", True)),
+                    "is_available": bool(cfg_svc.get("is_available", True)),
                     "secondsPer5000": seconds,
                 }
             )
@@ -417,6 +425,12 @@ class MoykaUI(QWidget):
                         "label": svc.get("label") or cfg_svc.get("display_name", front_key),
                         "theme": svc.get("theme") or cfg_svc.get("theme", "suv"),
                         "icon_file": svc.get("icon") or cfg_svc.get("icon", ""),
+                        "is_available": bool(
+                            svc.get(
+                                "is_available",
+                                svc.get("isAvailable", cfg_svc.get("is_available", True)),
+                            )
+                        ),
                         "hw_key": hw_key,
                     }
                 )
@@ -433,6 +447,7 @@ class MoykaUI(QWidget):
                         "label": svc_cfg.get("display_name", key),
                         "theme": svc_cfg.get("theme", "suv"),
                         "icon_file": svc_cfg.get("icon", ""),
+                        "is_available": bool(svc_cfg.get("is_available", True)),
                         "hw_key": key,
                     }
                 )
@@ -440,6 +455,11 @@ class MoykaUI(QWidget):
                 hw_to_fk[key] = key
 
         self.front_services = services
+        self.front_slots = {
+            slot.get("front_key"): slot
+            for slot in services
+            if slot.get("front_key")
+        }
         self.price_per_sec = price_map
         self.front_key_to_hw = fk_to_hw
         self.hw_to_front = hw_to_fk
@@ -487,6 +507,12 @@ class MoykaUI(QWidget):
             if "theme" in svc:
                 target["theme"] = str(svc.get("theme") or target.get("theme", "suv"))
             target["active"] = bool(svc.get("active", target.get("active", True)))
+            target["is_available"] = bool(
+                svc.get(
+                    "is_available",
+                    svc.get("isAvailable", target.get("is_available", True)),
+                )
+            )
 
         save_config(self.cfg)
         self._rebuild_front_services()
@@ -550,6 +576,7 @@ class MoykaUI(QWidget):
                     "label": slot["label"],
                     "theme": slot["theme"],
                     "icon": slot.get("icon_file", ""),
+                    "is_available": bool(slot.get("is_available", True)),
                 }
             )
 
@@ -590,6 +617,8 @@ class MoykaUI(QWidget):
                     "icon": svc.get("icon", ""),
                     "theme": svc.get("theme", "suv"),
                     "active": bool(svc.get("active", True)),
+                    "is_available": bool(svc.get("is_available", True)),
+                    "isAvailable": bool(svc.get("is_available", True)),
                 }
                 for key, svc in self.cfg.get("services", {}).items()
             ],
@@ -629,6 +658,7 @@ class MoykaUI(QWidget):
             btn.setMinimumHeight(btn_height)
             btn.setMaximumHeight(btn_height)
             btn.set_font_px(btn_font_px)
+            btn.set_available(bool(slot.get("is_available", True)))
             btn.clicked.connect(partial(self.button_clicked, front_key))
 
             row = idx // 2
@@ -766,13 +796,23 @@ class MoykaUI(QWidget):
         lock_sec = self._button_press_lock_sec if seconds is None else max(0.0, float(seconds))
         self._button_press_lock_until = max(self._button_press_lock_until, time.monotonic() + lock_sec)
 
+    def _front_slot(self, front_key):
+        return self.front_slots.get(front_key)
+
     def button_clicked(self, front_key):
         if self._buttons_locked():
             return
-        self._lock_buttons()
 
         front_key = front_key or ""
-        hw_key = self.front_key_to_hw.get(front_key, front_key)
+        slot = self._front_slot(front_key)
+        if not slot:
+            return
+        if not bool(slot.get("is_available", True)):
+            return
+
+        self._lock_buttons()
+
+        hw_key = slot.get("hw_key") or self.front_key_to_hw.get(front_key, front_key)
         price = self.price_per_sec.get(front_key)
         print(f"[CLICK] front_key={front_key} hw_key={hw_key} price={price} balance={self.balance}")
         if hw_key not in self.cfg["services"]:
@@ -1153,7 +1193,7 @@ class MoykaUI(QWidget):
             elif val == 1 and prev == 0:
                 front_key = self.hw_to_front.get(svc_name, svc_name)
                 btn = self._service_buttons.get(front_key)
-                if btn:
+                if btn and btn.isEnabled():
                     btn.pulse_click()
                 self.button_clicked(front_key)
 

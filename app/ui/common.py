@@ -1,7 +1,7 @@
 ﻿import os
 import re
 from PyQt6.QtCore import QRectF, QSize, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QFontMetrics, QIcon, QPixmap, QTransform
+from PyQt6.QtGui import QColor, QFontMetrics, QIcon, QPainter, QPainterPath, QPen, QPixmap, QTransform
 from PyQt6.QtWidgets import (
     QFrame,
     QGraphicsScene,
@@ -169,6 +169,41 @@ class RotatedContainer(QGraphicsView):
         self.centerOn(rect.center())
 
 
+class _UnavailableOverlay(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setStyleSheet("background: transparent;")
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        rect = self.rect().adjusted(7, 7, -7, -7)
+        if rect.width() <= 0 or rect.height() <= 0:
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        clip_path = QPainterPath()
+        clip_path.addRoundedRect(QRectF(rect), 10, 10)
+        painter.setClipPath(clip_path)
+        painter.fillRect(rect, QColor(100, 116, 139, 70))
+
+        pen = QPen(QColor(239, 68, 68, 220))
+        pen.setWidth(max(3, int(min(rect.width(), rect.height()) * 0.04)))
+        painter.setPen(pen)
+
+        height = int(rect.height())
+        step = max(18, int(rect.width() * 0.16))
+        start = int(rect.left() - rect.height())
+        end = int(rect.right() + rect.height())
+        for offset in range(start, end, step):
+            painter.drawLine(offset, int(rect.bottom()), offset + height, int(rect.top()))
+
+        painter.end()
+
+
 class ServiceButton(QPushButton):
 
     def __init__(self, label, theme, icon_file, show_icon=True, parent=None):
@@ -176,6 +211,7 @@ class ServiceButton(QPushButton):
         self._theme = str(theme or "suv")
         self._icon_file = str(icon_file or "")
         self._show_icon = bool(show_icon)
+        self._available = True
         self._active = False
         self._pulse_active = False
         self._base_font_px = 34
@@ -210,15 +246,31 @@ class ServiceButton(QPushButton):
         layout.addWidget(self.icon_label)
         layout.addWidget(self.text_label, 1)
 
+        self._unavailable_overlay = _UnavailableOverlay(self)
+        self._unavailable_overlay.hide()
+
         self._update_icon()
         self._apply_style()
         self._fit_text_font()
 
     def set_active(self, active):
-        self._active = bool(active)
+        self._active = bool(active) and self._available
+        self._apply_style()
+
+    def set_available(self, available):
+        self._available = bool(available)
+        if not self._available:
+            self._pulse_timer.stop()
+            self._pulse_active = False
+            self._active = False
+        self.setEnabled(self._available)
+        cursor = Qt.CursorShape.PointingHandCursor if self._available else Qt.CursorShape.ForbiddenCursor
+        self.setCursor(cursor)
         self._apply_style()
 
     def pulse_click(self, duration_ms=140):
+        if not self._available:
+            return
         self._pulse_active = True
         self._apply_style()
         self._pulse_timer.start(max(60, int(duration_ms)))
@@ -266,13 +318,22 @@ class ServiceButton(QPushButton):
         self.icon_label.setFixedWidth(slot_width)
 
     def _apply_style(self):
-        gradient, border_color = _theme_palette(self._theme)
-        pressed_gradient = _darken_gradient_qss(gradient, amount=0.2)
-        display_gradient = pressed_gradient if self._pulse_active else gradient
-        highlighted = self._active or self._pulse_active
-        active_border_color = "#f8fafc" if highlighted else border_color
-        border_width = "12px" if self._pulse_active else "10px"
-        border_css = f"{border_width} solid {active_border_color}"
+        if self._available:
+            gradient, border_color = _theme_palette(self._theme)
+            pressed_gradient = _darken_gradient_qss(gradient, amount=0.2)
+            display_gradient = pressed_gradient if self._pulse_active else gradient
+            highlighted = self._active or self._pulse_active
+            active_border_color = "#f8fafc" if highlighted else border_color
+            border_width = "12px" if self._pulse_active else "10px"
+            border_css = f"{border_width} solid {active_border_color}"
+            pressed_border_css = "12px solid #f8fafc"
+            text_color = "#ffffff"
+        else:
+            display_gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #8f9db0, stop:1 #758295)"
+            pressed_gradient = display_gradient
+            border_css = "10px solid #94a3b8"
+            pressed_border_css = border_css
+            text_color = "#e2e8f0"
 
         self.setStyleSheet(
             f"""
@@ -281,12 +342,17 @@ class ServiceButton(QPushButton):
                 border: {border_css};
                 border-radius: 12px;
             }}
+            QPushButton#ServiceButton:disabled {{
+                background: {display_gradient};
+                border: {border_css};
+                border-radius: 12px;
+            }}
             QPushButton#ServiceButton:pressed {{
                 background: {pressed_gradient};
-                border: 12px solid #f8fafc;
+                border: {pressed_border_css};
             }}
             QLabel#ServiceText {{
-                color: #ffffff;
+                color: {text_color};
                 font-family: Montserrat, sans-serif;
                 font-weight: 800;
                 letter-spacing: 0.015em;
@@ -294,6 +360,9 @@ class ServiceButton(QPushButton):
             }}
             """
         )
+
+        self._unavailable_overlay.setVisible(not self._available)
+        self._unavailable_overlay.raise_()
 
     def _fit_text_font(self):
         text = self.text_label.text().strip()
@@ -356,11 +425,15 @@ class ServiceButton(QPushButton):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        self._unavailable_overlay.setGeometry(self.rect())
+        self._unavailable_overlay.raise_()
         self._update_icon()
         self._fit_text_font()
 
     def showEvent(self, event):
         super().showEvent(event)
+        self._unavailable_overlay.setGeometry(self.rect())
+        self._unavailable_overlay.raise_()
         self._update_icon()
         self._fit_text_font()
 

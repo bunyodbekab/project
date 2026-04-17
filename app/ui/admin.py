@@ -433,6 +433,12 @@ class AdminDialog(QDialog):
             QCheckBox#SwitchCheck::indicator:unchecked {
                 background: rgba(71, 85, 105, 0.75);
             }
+            QLabel#SwitchStateLabel {
+                font-size: 14px;
+                font-weight: 800;
+                border-radius: 8px;
+                padding: 3px 8px;
+            }
             """
         )
 
@@ -505,8 +511,8 @@ class AdminDialog(QDialog):
         services_title.setStyleSheet("font-size: 22px; font-weight: 800;")
         services_layout.addWidget(services_title)
 
-        self.service_table = QTableWidget(0, 5)
-        self.service_table.setHorizontalHeaderLabels(["Nomi", "Icon", "Rang", "Vaqt (s)", "Faol"])
+        self.service_table = QTableWidget(0, 6)
+        self.service_table.setHorizontalHeaderLabels(["Nomi", "Icon", "Rang", "Vaqt (s)", "Faol", "Bor"])
         self.service_table.verticalHeader().setVisible(False)
         self.service_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.service_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -517,10 +523,12 @@ class AdminDialog(QDialog):
         header_view.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
         header_view.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
         header_view.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        header_view.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
         self.service_table.setColumnWidth(1, 124)
         self.service_table.setColumnWidth(2, 124)
         self.service_table.setColumnWidth(3, 122)
-        self.service_table.setColumnWidth(4, 96)
+        self.service_table.setColumnWidth(4, 120)
+        self.service_table.setColumnWidth(5, 120)
         services_layout.addWidget(self.service_table)
 
         root.addWidget(services_card, 1)
@@ -662,6 +670,47 @@ class AdminDialog(QDialog):
         )
         return holder
 
+    def _update_switch_state_label(self, label, checked, on_text, off_text):
+        checked = bool(checked)
+        text = on_text if checked else off_text
+        fg = "#dcfce7" if checked else "#fee2e2"
+        bg = "rgba(34, 197, 94, 0.24)" if checked else "rgba(239, 68, 68, 0.22)"
+        border = "rgba(134, 239, 172, 0.72)" if checked else "rgba(252, 165, 165, 0.72)"
+        label.setText(text)
+        label.setStyleSheet(
+            f"font-size: 14px; font-weight: 800; color: {fg}; "
+            f"background: {bg}; border: 1px solid {border}; border-radius: 8px; padding: 3px 8px;"
+        )
+
+    def _build_switch_cell(self, checked=False, on_text="ON", off_text="OFF"):
+        switch_check = QCheckBox()
+        switch_check.setObjectName("SwitchCheck")
+        switch_check.setChecked(bool(checked))
+
+        state_label = QLabel()
+        state_label.setObjectName("SwitchStateLabel")
+        state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._update_switch_state_label(state_label, switch_check.isChecked(), on_text, off_text)
+
+        switch_check.toggled.connect(
+            lambda state, lbl=state_label, on_val=on_text, off_val=off_text: self._update_switch_state_label(
+                lbl,
+                state,
+                on_val,
+                off_val,
+            )
+        )
+
+        holder = QWidget()
+        holder_layout = QHBoxLayout(holder)
+        holder_layout.setContentsMargins(0, 0, 0, 0)
+        holder_layout.setSpacing(6)
+        holder_layout.addWidget(switch_check)
+        holder_layout.addWidget(state_label)
+        holder_layout.addStretch(1)
+        holder_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        return holder, switch_check
+
     def _register_focus_target(self, widget, numeric=False, pin=False):
         widget.setProperty("numeric", bool(numeric or pin))
         widget.setProperty("pin", bool(pin))
@@ -722,6 +771,7 @@ class AdminDialog(QDialog):
                     "theme": svc.get("theme", "suv"),
                     "secondsPer5000": max(1, math.ceil(5000 / max(1, int(svc.get("price_per_sec", 1))))),
                     "active": bool(svc.get("active", True)),
+                    "is_available": bool(svc.get("is_available", True)),
                 }
             )
 
@@ -743,6 +793,12 @@ class AdminDialog(QDialog):
                     "theme": str(src.get("theme") or fallback.get("theme") or "suv"),
                     "seconds": _to_int(src.get("secondsPer5000"), fallback.get("secondsPer5000", 120), 1),
                     "active": bool(src.get("active", fallback.get("active", True))),
+                    "is_available": bool(
+                        src.get(
+                            "is_available",
+                            src.get("isAvailable", fallback.get("is_available", True)),
+                        )
+                    ),
                 }
             )
 
@@ -829,20 +885,24 @@ class AdminDialog(QDialog):
             seconds_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             self._register_focus_target(seconds_edit, numeric=True)
 
-            active_check = QCheckBox()
-            active_check.setObjectName("SwitchCheck")
-            active_check.setChecked(bool(svc.get("active", True)))
+            active_holder, active_check = self._build_switch_cell(
+                checked=bool(svc.get("active", True)),
+                on_text="ON",
+                off_text="OFF",
+            )
 
-            active_holder = QWidget()
-            active_layout = QHBoxLayout(active_holder)
-            active_layout.setContentsMargins(0, 0, 0, 0)
-            active_layout.addWidget(active_check, alignment=Qt.AlignmentFlag.AlignCenter)
+            available_holder, available_check = self._build_switch_cell(
+                checked=bool(svc.get("is_available", True)),
+                on_text="BOR",
+                off_text="YO'Q",
+            )
 
             self.service_table.setCellWidget(row_idx, 0, name_edit)
             self.service_table.setCellWidget(row_idx, 1, icon_holder)
             self.service_table.setCellWidget(row_idx, 2, theme_holder)
             self.service_table.setCellWidget(row_idx, 3, seconds_edit)
             self.service_table.setCellWidget(row_idx, 4, active_holder)
+            self.service_table.setCellWidget(row_idx, 5, available_holder)
             self.service_table.setRowHeight(row_idx, 112)
 
             self._service_rows.append(
@@ -853,6 +913,7 @@ class AdminDialog(QDialog):
                     "theme_combo": theme_combo,
                     "seconds_edit": seconds_edit,
                     "active_check": active_check,
+                    "available_check": available_check,
                 }
             )
 
@@ -928,6 +989,7 @@ class AdminDialog(QDialog):
             theme = str(row["theme_combo"].currentData(Qt.ItemDataRole.UserRole) or "suv").strip() or "suv"
             seconds = _to_int(row["seconds_edit"].text(), 120, 1)
             active = row["active_check"].isChecked()
+            is_available = row["available_check"].isChecked()
 
             services.append(
                 {
@@ -937,6 +999,7 @@ class AdminDialog(QDialog):
                     "icon": icon,
                     "theme": theme,
                     "active": active,
+                    "is_available": is_available,
                     "secondsPer5000": seconds,
                     "duration": seconds,
                     "showIcon": True,

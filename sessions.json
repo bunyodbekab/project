@@ -646,5 +646,29 @@
     "service_name": "PAUZA",
     "earned": 14832,
     "date": "2026-04-15 19:22:57"
+  },
+  {
+    "service": "XIZMAT7",
+    "service_name": "XIZMAT7",
+    "earned": 252,
+    "date": "2026-04-17 13:50:28"
+  },
+  {
+    "service": "PAUSE",
+    "service_name": "PAUZA",
+    "earned": 714,
+    "date": "2026-04-17 13:51:36"
+  },
+  {
+    "service": "XIZMAT5",
+    "service_name": "NANO",
+    "earned": 252,
+    "date": "2026-04-17 13:51:42"
+  },
+  {
+    "service": "PAUSE",
+    "service_name": "PAUZA",
+    "earned": 3740,
+    "date": "2026-04-17 13:53:12"
   }
 ]

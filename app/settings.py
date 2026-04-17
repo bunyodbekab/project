@@ -8,14 +8,14 @@ ICONS_DIR = os.path.join(BASE_DIR, "icons")
 
 DEFAULT_CONFIG = {
     "services": {
-        "XIZMAT1": {"display_name": "SUV", "price_per_sec": 200, "duration": 60, "relay_bit": 0, "icon": "suv.png", "theme": "suv", "active": True},
-        "XIZMAT2": {"display_name": "OSMOS", "price_per_sec": 150, "duration": 100, "relay_bit": 1, "icon": "osmos.png", "theme": "osmos", "active": True},
-        "XIZMAT3": {"display_name": "AKTIV PENA", "price_per_sec": 250, "duration": 80, "relay_bit": 2, "icon": "aktiv.png", "theme": "aktiv", "active": True},
-        "XIZMAT4": {"display_name": "PENA", "price_per_sec": 350, "duration": 70, "relay_bit": 3, "icon": "pena.png", "theme": "pena", "active": True},
-        "XIZMAT5": {"display_name": "NANO", "price_per_sec": 300, "duration": 50, "relay_bit": 4, "icon": "nano.png", "theme": "nano", "active": True},
-        "XIZMAT6": {"display_name": "VOSK", "price_per_sec": 200, "duration": 90, "relay_bit": 5, "icon": "vosk.png", "theme": "vosk", "active": True},
-        "XIZMAT7": {"display_name": "XIZMAT 7", "price_per_sec": 100, "duration": 120, "relay_bit": 6, "icon": "suv.png", "theme": "suv", "active": True},
-        "XIZMAT8": {"display_name": "XIZMAT 8", "price_per_sec": 100, "duration": 120, "relay_bit": 7, "icon": "osmos.png", "theme": "osmos", "active": True},
+        "XIZMAT1": {"display_name": "SUV", "price_per_sec": 200, "duration": 60, "relay_bit": 0, "icon": "suv.png", "theme": "suv", "active": True, "is_available": True},
+        "XIZMAT2": {"display_name": "OSMOS", "price_per_sec": 150, "duration": 100, "relay_bit": 1, "icon": "osmos.png", "theme": "osmos", "active": True, "is_available": True},
+        "XIZMAT3": {"display_name": "AKTIV PENA", "price_per_sec": 250, "duration": 80, "relay_bit": 2, "icon": "aktiv.png", "theme": "aktiv", "active": True, "is_available": True},
+        "XIZMAT4": {"display_name": "PENA", "price_per_sec": 350, "duration": 70, "relay_bit": 3, "icon": "pena.png", "theme": "pena", "active": True, "is_available": True},
+        "XIZMAT5": {"display_name": "NANO", "price_per_sec": 300, "duration": 50, "relay_bit": 4, "icon": "nano.png", "theme": "nano", "active": True, "is_available": True},
+        "XIZMAT6": {"display_name": "VOSK", "price_per_sec": 200, "duration": 90, "relay_bit": 5, "icon": "vosk.png", "theme": "vosk", "active": True, "is_available": True},
+        "XIZMAT7": {"display_name": "XIZMAT 7", "price_per_sec": 100, "duration": 120, "relay_bit": 6, "icon": "suv.png", "theme": "suv", "active": True, "is_available": True},
+        "XIZMAT8": {"display_name": "XIZMAT 8", "price_per_sec": 100, "duration": 120, "relay_bit": 7, "icon": "osmos.png", "theme": "osmos", "active": True, "is_available": True},
     },
     "moyka_name": "MOYKA",
     "admin_pin": "1234",
