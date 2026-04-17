@@ -12,7 +12,15 @@ from PyQt6.QtWidgets import QApplication, QFrame, QGridLayout, QHBoxLayout, QLab
 
 from app.game_logic import MathGameGenerator
 from app.gpio_controller import GPIOController
-from app.settings import BLINK_WARN, DEBUG, DEFAULT_CONFIG, INPUT_GPIO_TO_SERVICE, LOW_BALANCE, app_font
+from app.settings import (
+    BLINK_WARN,
+    DEBUG,
+    DEFAULT_CONFIG,
+    INPUT_GPIO_TO_SERVICE,
+    LOW_BALANCE,
+    SHOW_GAME_ADMIN_SETTINGS,
+    app_font,
+)
 from app.storage import add_session, load_config, save_config
 from .admin import AdminDialog, PinDialog
 from .common import ClickableFrame, PauseButton, RotatedContainer, ServiceButton, _format_money
@@ -205,7 +213,7 @@ class MoykaUI(QWidget):
         )
 
         self._root_layout = QVBoxLayout(self)
-        self._root_layout.setContentsMargins(0, 0, 0, 0)
+        self._root_layout.setContentsMargins(0, 50, 0, 0)
         self._root_layout.setSpacing(0)
 
         self._main_page_shell = QWidget(self)
@@ -232,6 +240,7 @@ class MoykaUI(QWidget):
         top_padding_h = int(self.w * 0.02)
         top_layout.setContentsMargins(top_padding_h, top_padding_v, top_padding_h, int(self.h * 0.012))
         top_layout.setSpacing(int(self.h * 0.008))
+
 
         self.header_title = QLabel("XUSH KELIBSIZ")
         self.header_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -489,8 +498,10 @@ class MoykaUI(QWidget):
 
     def _game_cfg(self):
         cfg = self.cfg.get("game") if isinstance(self.cfg.get("game"), dict) else {}
+        gate_enabled = bool(SHOW_GAME_ADMIN_SETTINGS)
+        cfg_enabled = bool(cfg.get("enabled", False))
         return {
-            "enabled": bool(cfg.get("enabled", False)),
+            "enabled": gate_enabled and cfg_enabled,
             "minBalance": max(0, int(cfg.get("minBalance", cfg.get("min_balance", 10000)) or 0)),
             "rewardPerCorrect": max(1, int(cfg.get("rewardPerCorrect", cfg.get("reward_per_correct", 500)) or 500)),
         }

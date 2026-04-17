@@ -54,6 +54,9 @@ LOW_BALANCE = 2000
 BLINK_WARN = 10
 DEBUG = False
 
+# Admin panelda o'yin sozlamalarini ko'rsatish/yashirish flag'i.
+SHOW_GAME_ADMIN_SETTINGS = False
+
 FONT_FAMILY = "font/Montserrat/static"
 
 

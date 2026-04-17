@@ -18,7 +18,7 @@
       "icon": "osmos.png",
       "theme": "osmos",
       "active": true,
-      "is_available": false
+      "is_available": true
     },
     "XIZMAT3": {
       "display_name": "AKTIV PENA",
@@ -87,8 +87,8 @@
     "latch_pin": 79
   },
   "moyka_name": "MOYKA",
-  "admin_pin": "1235",
-  "admin_pin_alt": "1235",
+  "admin_pin": "1234",
+  "admin_pin_alt": "1234",
   "bonus": {
     "percent": 0,
     "threshold": 0

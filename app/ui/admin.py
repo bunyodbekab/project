@@ -24,7 +24,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from app.settings import DEFAULT_CONFIG, app_font
+from app.settings import DEFAULT_CONFIG, SHOW_GAME_ADMIN_SETTINGS, app_font
 from .common import THEME_COLORS, _format_money, _icon_path, _to_int
 
 
@@ -292,6 +292,7 @@ class AdminDialog(QDialog):
         self.ui_ref = ui_ref
         self._active_input = None
         self._service_rows = []
+        self._show_game_admin_settings = bool(SHOW_GAME_ADMIN_SETTINGS)
 
         self.icon_options = []
         for svc in DEFAULT_CONFIG.get("services", {}).values():
@@ -499,10 +500,13 @@ class AdminDialog(QDialog):
         self._add_labeled_field(settings_layout, 0, 2, "Pauza 5000 so'm (s)", self.paid_pause_edit)
         self._add_labeled_field(settings_layout, 0, 3, "Bonus %", self.bonus_percent_edit)
         self._add_labeled_field(settings_layout, 1, 0, "Bonus threshold (so'm)", self.bonus_threshold_edit)
-        self._add_labeled_field(settings_layout, 1, 1, "O'yin min balans (so'm)", self.game_min_balance_edit)
-        self._add_labeled_field(settings_layout, 1, 2, "O'yin mukofot (so'm)", self.game_reward_edit)
-        settings_layout.addWidget(self.game_enabled_check, 1, 3)
-        settings_layout.addWidget(self.show_icons_check, 2, 0, 1, 4)
+        if self._show_game_admin_settings:
+            self._add_labeled_field(settings_layout, 1, 1, "O'yin min balans (so'm)", self.game_min_balance_edit)
+            self._add_labeled_field(settings_layout, 1, 2, "O'yin mukofot (so'm)", self.game_reward_edit)
+            settings_layout.addWidget(self.game_enabled_check, 1, 3)
+            settings_layout.addWidget(self.show_icons_check, 2, 0, 1, 4)
+        else:
+            settings_layout.addWidget(self.show_icons_check, 1, 1, 1, 3)
 
         root.addWidget(settings_card)
 
@@ -618,8 +622,9 @@ class AdminDialog(QDialog):
         self._register_focus_target(self.paid_pause_edit, numeric=True)
         self._register_focus_target(self.bonus_percent_edit, numeric=True)
         self._register_focus_target(self.bonus_threshold_edit, numeric=True)
-        self._register_focus_target(self.game_min_balance_edit, numeric=True)
-        self._register_focus_target(self.game_reward_edit, numeric=True)
+        if self._show_game_admin_settings:
+            self._register_focus_target(self.game_min_balance_edit, numeric=True)
+            self._register_focus_target(self.game_reward_edit, numeric=True)
 
         self._load_payload(self.ui_ref._settings_payload())
 
@@ -736,15 +741,20 @@ class AdminDialog(QDialog):
         self._clear_initial_focus()
 
     def _clear_initial_focus(self):
-        for widget in (
+        focus_widgets = [
             self.pin_edit,
             self.free_pause_edit,
             self.paid_pause_edit,
             self.bonus_percent_edit,
             self.bonus_threshold_edit,
-            self.game_min_balance_edit,
-            self.game_reward_edit,
-        ):
+        ]
+        if self._show_game_admin_settings:
+            focus_widgets.extend([
+                self.game_min_balance_edit,
+                self.game_reward_edit,
+            ])
+
+        for widget in focus_widgets:
             widget.clearFocus()
         self.service_table.clearSelection()
         self.service_table.clearFocus()
