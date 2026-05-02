@@ -10,6 +10,13 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFontMetrics
 from PyQt6.QtWidgets import QApplication, QFrame, QGridLayout, QHBoxLayout, QLabel, QProgressBar, QSizePolicy, QVBoxLayout, QWidget
 
+from app.device_lock import (
+    DEVICE_LOCK_KEY,
+    USB_UNLOCK_PASSWORD,
+    bind_current_device_to_config,
+    evaluate_device_lock,
+    usb_password_matches,
+)
 from app.game_logic import MathGameGenerator
 from app.gpio_controller import GPIOController
 from app.settings import (
@@ -36,6 +43,8 @@ class MoykaUI(QWidget):
         self.setObjectName("MoykaRoot")
 
         self.cfg = load_config()
+        self.device_lock_status = evaluate_device_lock(self.cfg)
+        self.device_locked = not bool(self.device_lock_status.get("allowed"))
         relay_map = {
             name: data.get("relay_bit", data.get("gpio_out", idx % 8))
             for idx, (name, data) in enumerate(self.cfg["services"].items())
@@ -153,8 +162,64 @@ class MoykaUI(QWidget):
 
         self._setup_ui()
         self._rebuild_front_services()
+        if self.device_locked:
+            self._apply_device_lock_mode()
         self._emit_state()
         self._set_main_page_visible(True)
+
+    def _apply_device_lock_mode(self):
+        self._pause_hold_timer.stop()
+        self._pending_game_start = False
+        self._stop_long_triggered = False
+        self._stop_hold_source = None
+        self._stop_hold_started = None
+
+        if self._is_game_busy():
+            self._finish_game_cleanup()
+
+        if self.pause_mode:
+            self._stop_pause()
+        elif self.is_running:
+            self._stop_service(manual_pause=False)
+
+        self.balance = 0
+        self.remaining_sec = 0
+        self.show_timer_mode = False
+        self.pause_mode = False
+        self.pause_stage = "off"
+        self.session_earned = 0
+        self.blink_timer.stop()
+        self.blink_state = False
+        self._bonus_awarded = False
+        self.pause_free_left = self.pause_free_credit
+        self.gpio.all_off()
+
+    def _try_unlock_from_usb(self):
+        matched, password_path = usb_password_matches(USB_UNLOCK_PASSWORD)
+        if not matched:
+            print("[LOCK] USB paroli topilmadi yoki noto'g'ri.")
+            self._flash_low_balance()
+            return False
+
+        try:
+            bind_current_device_to_config(self.cfg)
+            save_config(self.cfg)
+        except Exception as exc:
+            print(f"[LOCK] Qurilma binding saqlanmadi: {exc}")
+            self._flash_low_balance()
+            return False
+
+        self.device_lock_status = evaluate_device_lock(self.cfg)
+        self.device_locked = not bool(self.device_lock_status.get("allowed"))
+        if self.device_locked:
+            print("[LOCK] USB tekshiruvdan so'ng ham lock ochilmadi.")
+            self._flash_low_balance()
+            return False
+
+        print(f"[LOCK] Taqiq USB orqali ochildi: {password_path}")
+        self._clear_money_and_time()
+        self._emit_state()
+        return True
 
     def _setup_ui(self):
         # Match HTML/CSS clamp() calculations exactly
@@ -233,7 +298,7 @@ class MoykaUI(QWidget):
         self.top_panel = ClickableFrame(self._main_page_container)
         self.top_panel.setObjectName("TopPanel")
         self.top_panel.setFixedHeight(self._top_panel_height)
-        self.top_panel.clicked.connect(self._on_top_panel_clicked)
+        # self.top_panel.clicked.connect(self._on_top_panel_clicked)  # Disabled - no money on top panel clicks
         top_layout = QVBoxLayout(self.top_panel)
         # HTML: padding: 2.2vh 2vw 1.2vh
         top_padding_v = int(self.h * 0.022)
@@ -308,6 +373,8 @@ class MoykaUI(QWidget):
         self._root_layout.addWidget(self._main_page_shell, 1)
 
     def _on_top_panel_clicked(self):
+        if self.device_locked:
+            return
         if self.is_running or self.pause_mode or self._is_game_busy():
             return
         self.add_money(5000)
@@ -316,7 +383,10 @@ class MoykaUI(QWidget):
         return json.loads(json.dumps(DEFAULT_CONFIG))
 
     def reset_config_to_defaults(self):
+        lock_data = self.cfg.get(DEVICE_LOCK_KEY)
         self.cfg = self._deepcopy_default_config()
+        if isinstance(lock_data, dict):
+            self.cfg[DEVICE_LOCK_KEY] = lock_data
         self.front_settings = None
         save_config(self.cfg)
         self._rebuild_front_services()
@@ -513,6 +583,8 @@ class MoykaUI(QWidget):
         return self.game_state == "playing"
 
     def _can_offer_game(self):
+        if self.device_locked:
+            return False
         cfg = self._game_cfg()
         if not cfg.get("enabled"):
             return False
@@ -975,6 +1047,8 @@ class MoykaUI(QWidget):
         return self.cfg["services"].get(service_key, {}).get("display_name", service_key).upper()
 
     def _header_color(self, mode, pause_status="off"):
+        if self.device_locked:
+            return "#ff4d4d"
         if self._low_balance_flash:
             return "#ff4d4d"
         if self.blink_timer.isActive() and self.blink_state:
@@ -996,7 +1070,11 @@ class MoykaUI(QWidget):
             "label": "",
         }
 
-        if self._is_game_busy():
+        if self.device_locked:
+            mode = "locked"
+            title = "TAQIQLANADI"
+            main_text = "TAQIQLANADI"
+        elif self._is_game_busy():
             mode = "game"
             title = self.game_title
             main_text = self.game_main_text
@@ -1045,7 +1123,7 @@ class MoykaUI(QWidget):
             "activeService": self.active_front_key or "",
             "services": services,
             "pauseState": pause_state,
-            "canAddMoney": mode == "idle",
+            "canAddMoney": mode == "idle" and not self.device_locked,
             "total_earned": self.cfg.get("total_earned", 0),
             "admin_pins": [self.cfg.get("admin_pin", "1234")],
             "bonus": self.cfg.get("bonus", {}),
@@ -1224,7 +1302,9 @@ class MoykaUI(QWidget):
         is_pause = mode == "pause"
         is_free = pause_state.get("status") == "free"
         pause_label = pause_state.get("label") or ("TEKIN PAUZA" if is_free else "PAUZA")
-        if mode == "game":
+        if self.device_locked:
+            self.pause_button.set_state(False, False, "USB+PAUZA", "", mode="pause")
+        elif mode == "game":
             self.pause_button.set_state(False, False, "O'YIN", "", mode="game")
         elif is_pause:
             # Keep pause timer internal; do not show countdown inside the pause button.
@@ -1276,6 +1356,8 @@ class MoykaUI(QWidget):
         self._render_state()
 
     def add_money(self, amount=5000):
+        if self.device_locked:
+            return
         self.balance += amount
         self._apply_bonus_if_needed()
         self._emit_state()
@@ -1306,6 +1388,8 @@ class MoykaUI(QWidget):
         return self.front_slots.get(front_key)
 
     def button_clicked(self, front_key):
+        if self.device_locked:
+            return
         if self._is_game_playing():
             if self._game_feedback_busy:
                 return
@@ -1377,6 +1461,13 @@ class MoykaUI(QWidget):
         self._check_blink()
 
     def _on_stop_pressed(self, source="touch"):
+        if self.device_locked:
+            if self._buttons_locked():
+                return
+            self._lock_buttons(0.4)
+            self._try_unlock_from_usb()
+            return
+
         if self._is_game_busy():
             return
 
@@ -1403,6 +1494,12 @@ class MoykaUI(QWidget):
             self._stop_service(manual_pause=True)
 
     def _on_stop_released(self, source="touch"):
+        if self.device_locked:
+            self._pause_hold_timer.stop()
+            self._stop_hold_started = None
+            self._stop_hold_source = None
+            return
+
         self._pause_hold_timer.stop()
 
         if self._pending_game_start and not self._stop_long_triggered:
@@ -1413,6 +1510,12 @@ class MoykaUI(QWidget):
         self._stop_hold_source = None
 
     def _pause_hold_tick(self):
+        if self.device_locked:
+            self._pause_hold_timer.stop()
+            self._stop_hold_source = None
+            self._stop_hold_started = None
+            return
+
         self._pause_hold_timer.stop()
         self._stop_long_triggered = True
         self._pending_game_start = False
@@ -1423,6 +1526,8 @@ class MoykaUI(QWidget):
         self._stop_hold_started = None
 
     def _open_pin_modal(self):
+        if self.device_locked:
+            return
         if self._pin_dialog_open:
             return
 
@@ -1443,6 +1548,8 @@ class MoykaUI(QWidget):
         self._root_layout.addWidget(page_container, 1)
 
     def _open_admin_panel(self):
+        if self.device_locked:
+            return
         self._clear_active_page_widget()
 
         dialog = AdminDialog(self, self)
@@ -1506,6 +1613,8 @@ class MoykaUI(QWidget):
 
     def _on_pause_button_long_pressed(self):
         """Triggered when pause button is held for 2 seconds."""
+        if self.device_locked:
+            return
         self._open_pin_modal()
 
     def _clear_money_and_time(self):
@@ -1732,6 +1841,8 @@ class MoykaUI(QWidget):
                     self._on_stop_pressed("gpio")
                 elif val == 0 and prev == 1:
                     self._on_stop_released("gpio")
+            elif self.device_locked:
+                pass
             elif svc_name == "PUL":
                 if val == 1 and prev == 0:
                     self.add_money(1000)
@@ -1756,6 +1867,8 @@ class MoykaUI(QWidget):
         self.gpio.set_pin(name, 0)
 
     def keyPressEvent(self, event):
+        if self.device_locked and event.key() in (Qt.Key.Key_Enter, Qt.Key.Key_Return):
+            return
         if event.key() in (Qt.Key.Key_Enter, Qt.Key.Key_Return):
             self._on_top_panel_clicked()
             return

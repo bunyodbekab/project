@@ -1,10 +1,16 @@
 """Admin UI dialogs."""
 
+import glob
 import math
+import os
+import shutil
 import subprocess
+import sys
+import time
 from functools import partial
+from pathlib import Path
 
-from PyQt6.QtCore import QEvent, QSize, Qt
+from PyQt6.QtCore import QEvent, QSize, Qt, QTimer
 from PyQt6.QtGui import QColor, QIcon, QIntValidator, QPainter, QPixmap
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -24,8 +30,30 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from app.settings import DEFAULT_CONFIG, SHOW_GAME_ADMIN_SETTINGS, app_font
+from app.settings import DEFAULT_CONFIG, SHOW_GAME_ADMIN_SETTINGS, ICONS_DIR, app_font
 from .common import THEME_COLORS, _format_money, _icon_path, _to_int
+
+# Custom icons directory for user-provided icons
+ADDICONS_DIR = os.path.join(os.path.dirname(ICONS_DIR), "addicons")
+
+
+def _center_message_box_on_parent(msg_box, parent):
+    """Center QMessageBox on the same screen as parent widget."""
+    if parent and parent.isVisible():
+        try:
+            from PyQt6.QtGui import QScreen
+            # Get parent window's screen
+            parent_screen = parent.screen()
+            if parent_screen:
+                screen_geo = parent_screen.availableGeometry()
+                msg_geo = msg_box.geometry()
+                
+                # Center on the screen
+                x = screen_geo.x() + (screen_geo.width() - msg_geo.width()) // 2
+                y = screen_geo.y() + (screen_geo.height() - msg_geo.height()) // 2
+                msg_box.move(x, y)
+        except Exception:
+            pass  # Fallback to Qt's default centering
 
 
 class FallbackComboBox(QComboBox):
@@ -286,6 +314,36 @@ class PinDialog(QDialog):
         self.reject()
 
 
+class LongPressButton(QPushButton):
+    """Button that detects long press for 2+ seconds."""
+    
+    def __init__(self, text="", parent=None, on_short_click=None, on_long_press=None):
+        super().__init__(text, parent)
+        self.on_short_click = on_short_click
+        self.on_long_press = on_long_press
+        self._press_time = 0
+    
+    def mousePressEvent(self, event):
+        self._press_time = time.monotonic()
+        super().mousePressEvent(event)
+    
+    def mouseReleaseEvent(self, event):
+        if self._press_time > 0:
+            elapsed = time.monotonic() - self._press_time
+            self._press_time = 0
+            
+            if elapsed > 2.0 and callable(self.on_long_press):
+                self.on_long_press()
+                event.accept()
+                return
+            elif elapsed <= 2.0 and callable(self.on_short_click):
+                self.on_short_click()
+                event.accept()
+                return
+        
+        super().mouseReleaseEvent(event)
+
+
 class AdminDialog(QDialog):
     def __init__(self, ui_ref, parent=None):
         super().__init__(parent)
@@ -295,10 +353,18 @@ class AdminDialog(QDialog):
         self._show_game_admin_settings = bool(SHOW_GAME_ADMIN_SETTINGS)
 
         self.icon_options = []
+        # Load default icons from config
         for svc in DEFAULT_CONFIG.get("services", {}).values():
             icon_name = svc.get("icon")
             if icon_name and icon_name not in self.icon_options:
                 self.icon_options.append(icon_name)
+        
+        # Load custom icons from addicons folder
+        if os.path.isdir(ADDICONS_DIR):
+            for png_file in glob.glob(os.path.join(ADDICONS_DIR, "*.png")):
+                icon_name = os.path.basename(png_file)
+                if icon_name not in self.icon_options:
+                    self.icon_options.append(icon_name)
 
         self.setModal(False)
         self.setWindowTitle("Admin sozlamalar")
@@ -504,9 +570,43 @@ class AdminDialog(QDialog):
             self._add_labeled_field(settings_layout, 1, 1, "O'yin min balans (so'm)", self.game_min_balance_edit)
             self._add_labeled_field(settings_layout, 1, 2, "O'yin mukofot (so'm)", self.game_reward_edit)
             settings_layout.addWidget(self.game_enabled_check, 1, 3)
-            settings_layout.addWidget(self.show_icons_check, 2, 0, 1, 4)
+            
+            # Show icons row with import button
+            icons_row = QHBoxLayout()
+            icons_row.setSpacing(12)
+            icons_row.addWidget(self.show_icons_check)
+            
+            import_btn = LongPressButton(
+                "Icon import",
+                on_short_click=self._on_import_icons_clicked,
+                on_long_press=self._show_clear_addicons_dialog
+            )
+            import_btn.setMaximumWidth(200)
+            import_btn.setMinimumHeight(48)
+            icons_row.addWidget(import_btn)
+            icons_row.addStretch(1)
+            
+            icons_widget = QWidget()
+            icons_widget.setLayout(icons_row)
+            settings_layout.addWidget(icons_widget, 2, 0, 1, 4)
         else:
-            settings_layout.addWidget(self.show_icons_check, 1, 1, 1, 3)
+            icons_row = QHBoxLayout()
+            icons_row.setSpacing(12)
+            icons_row.addWidget(self.show_icons_check)
+            
+            import_btn = LongPressButton(
+                "Icon import",
+                on_short_click=self._on_import_icons_clicked,
+                on_long_press=self._show_clear_addicons_dialog
+            )
+            import_btn.setMaximumWidth(200)
+            import_btn.setMinimumHeight(48)
+            icons_row.addWidget(import_btn)
+            icons_row.addStretch(1)
+            
+            icons_widget = QWidget()
+            icons_widget.setLayout(icons_row)
+            settings_layout.addWidget(icons_widget, 1, 1, 1, 3)
 
         root.addWidget(settings_card)
 
@@ -1075,20 +1175,31 @@ class AdminDialog(QDialog):
             return
 
         action_label = "qayta yuklash" if action == "reboot" else "o'chirish"
-        answer = QMessageBox.question(
-            self,
+        msg_box = QMessageBox(
+            QMessageBox.Icon.Question,
             "Tasdiqlang",
             f"Qurilmani {action_label}ni xohlaysizmi?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+            self,
         )
+        msg_box.setDefaultButton(QMessageBox.StandardButton.No)
+        _center_message_box_on_parent(msg_box, self)
+        answer = msg_box.exec()
         if answer != QMessageBox.StandardButton.Yes:
             return
 
-        if action == "reboot":
-            commands = [["systemctl", "reboot"], ["reboot"]]
+        if sys.platform == "win32":
+            # Windows commands
+            if action == "reboot":
+                commands = [["shutdown", "/r", "/t", "0"]]
+            else:
+                commands = [["shutdown", "/s", "/t", "0"]]
         else:
-            commands = [["systemctl", "poweroff"], ["shutdown", "-h", "now"]]
+            # Linux commands
+            if action == "reboot":
+                commands = [["systemctl", "reboot"], ["reboot"]]
+            else:
+                commands = [["systemctl", "poweroff"], ["shutdown", "-h", "now"]]
 
         last_error = None
         for cmd in commands:
@@ -1100,11 +1211,15 @@ class AdminDialog(QDialog):
                 last_error = exc
 
         self._set_status(f"{action_label.title()} buyrug'i yuborilmadi", "#ef4444")
-        QMessageBox.warning(
-            self,
+        msg_box = QMessageBox(
+            QMessageBox.Icon.Warning,
             "Xatolik",
             f"{action_label.title()} buyrug'ini yuborib bo'lmadi.\n{last_error}",
+            QMessageBox.StandardButton.Ok,
+            self,
         )
+        _center_message_box_on_parent(msg_box, self)
+        msg_box.exec()
 
     def _set_status(self, text, color="#60a5fa"):
         self.status_label.setText(text)
@@ -1116,14 +1231,295 @@ class AdminDialog(QDialog):
         self.total_label.setText(f"Jami: {_format_money(self.ui_ref.cfg.get('total_earned', 0))} so'm")
         self._set_status("Saqlandi", "#22c55e")
 
-    def _reset_defaults(self):
-        answer = QMessageBox.question(
+    def _show_clear_addicons_dialog(self):
+        """Show dialog to confirm clearing addicons folder."""
+        msg_box = QMessageBox(
+            QMessageBox.Icon.Question,
+            "Tozalash",
+            "Addicons folderini tozalamoqchisiz?",
+            QMessageBox.StandardButton.No | QMessageBox.StandardButton.Yes,
             self,
+        )
+        _center_message_box_on_parent(msg_box, self)
+        answer = msg_box.exec()
+        if answer == QMessageBox.StandardButton.Yes:
+            self._clear_addicons()
+    
+    def _clear_addicons(self):
+        """Clear all PNG files from addicons folder."""
+        try:
+            if os.path.isdir(ADDICONS_DIR):
+                for png_file in glob.glob(os.path.join(ADDICONS_DIR, "*.png")):
+                    try:
+                        os.remove(png_file)
+                    except Exception as exc:
+                        print(f"Faylni o'chirishda xato: {png_file}: {exc}")
+                self._set_status("Addicons tozalandi", "#22c55e")
+                self._refresh_icon_combos()
+        except Exception as exc:
+            self._set_status(f"Tozalashda xato: {exc}", "#ef4444")
+    
+    def _refresh_icon_combos(self):
+        """Refresh icon combo boxes with current available icons."""
+        # Regenerate icon_options
+        self.icon_options = []
+        for svc in DEFAULT_CONFIG.get("services", {}).values():
+            icon_name = svc.get("icon")
+            if icon_name and icon_name not in self.icon_options:
+                self.icon_options.append(icon_name)
+        
+        if os.path.isdir(ADDICONS_DIR):
+            for png_file in glob.glob(os.path.join(ADDICONS_DIR, "*.png")):
+                icon_name = os.path.basename(png_file)
+                if icon_name not in self.icon_options:
+                    self.icon_options.append(icon_name)
+        
+        # Get first default icon as fallback
+        default_icons = glob.glob(os.path.join(ICONS_DIR, "*.png"))
+        first_default_icon = os.path.basename(default_icons[0]) if default_icons else ""
+        
+        # Update all service row icon combos
+        for row in self._service_rows:
+            icon_combo = row.get("icon_combo")
+            if not icon_combo:
+                continue
+            
+            # Get currently selected icon
+            current_icon = str(icon_combo.currentData(Qt.ItemDataRole.UserRole) or "")
+            
+            # Clear combo
+            icon_combo.clear()
+            
+            # Rebuild combo with all available icons
+            for icon_name in self.icon_options:
+                icon_fp = _icon_path(icon_name)
+                if icon_fp:
+                    icon_combo.addItem(QIcon(icon_fp), "")
+                else:
+                    icon_combo.addItem(QIcon(), "")
+                icon_combo.setItemData(icon_combo.count() - 1, icon_name, Qt.ItemDataRole.UserRole)
+            
+            # Try to restore previously selected icon, or use first default if not found
+            selected_idx = 0
+            for i in range(icon_combo.count()):
+                if str(icon_combo.itemData(i, Qt.ItemDataRole.UserRole) or "") == current_icon:
+                    selected_idx = i
+                    break
+            else:
+                # If current icon not found, use first default icon
+                if first_default_icon:
+                    for i in range(icon_combo.count()):
+                        if str(icon_combo.itemData(i, Qt.ItemDataRole.UserRole) or "") == first_default_icon:
+                            selected_idx = i
+                            break
+            
+            icon_combo.setCurrentIndex(selected_idx)
+    
+    def _find_usb_icons_paths(self):
+        """Find possible USB mounted paths with icons folder - works on Windows and Linux."""
+        potential_paths = []
+        
+        if sys.platform == "win32":
+            # Windows: search all drive letters
+            import string
+            for drive in string.ascii_uppercase:
+                drive_path = f"{drive}:\\"
+                if os.path.isdir(drive_path):
+                    try:
+                        # Search for icons folder at root level
+                        icons_dir = os.path.join(drive_path, "icons")
+                        if os.path.isdir(icons_dir):
+                            potential_paths.append(icons_dir)
+                        
+                        # Search one level deep
+                        for item in glob.glob(os.path.join(drive_path, "*", "icons")):
+                            if os.path.isdir(item):
+                                potential_paths.append(item)
+                    except Exception:
+                        continue
+        else:
+            # Linux/Armbian: search mount points
+            common_mounts = [
+                "/media",
+                "/mnt",
+                "/aa",
+                "/tmp",
+                "/root",
+                "/home",
+                "/run/media",
+                "/var/run/media",
+                "/opt",
+            ]
+            
+            # Try to search all mounted filesystems via /proc/mounts
+            try:
+                if os.path.exists("/proc/mounts"):
+                    with open("/proc/mounts", "r") as f:
+                        for line in f:
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                mount_point = parts[1]
+                                # Skip system mount points
+                                if mount_point not in ["/", "/boot", "/sys", "/proc", "/dev"]:
+                                    if mount_point not in common_mounts:
+                                        common_mounts.append(mount_point)
+            except Exception:
+                pass  # Continue with default mount points
+            
+            # Search for icons folders in all mount points
+            for mount_base in common_mounts:
+                if not os.path.isdir(mount_base):
+                    continue
+                
+                try:
+                    # Search up to 3 levels deep for icons folders
+                    for item in glob.glob(os.path.join(mount_base, "*", "icons")):
+                        if os.path.isdir(item):
+                            potential_paths.append(item)
+                    
+                    # Two levels deep
+                    for item in glob.glob(os.path.join(mount_base, "*", "*", "icons")):
+                        if os.path.isdir(item):
+                            potential_paths.append(item)
+                    
+                    # Direct icons folder
+                    icons_dir = os.path.join(mount_base, "icons")
+                    if os.path.isdir(icons_dir):
+                        potential_paths.append(icons_dir)
+                except Exception:
+                    continue  # Skip problematic directories
+        
+        return list(set(potential_paths))  # Remove duplicates
+    
+    def _on_import_icons_clicked(self):
+        """Handle import icons button click."""
+        usb_paths = self._find_usb_icons_paths()
+        
+        if not usb_paths:
+            # Show detailed error message
+            if sys.platform == "win32":
+                msg = "USB dagi icons/ folderi topilmadi.\n\nUSB bilan tutashgan drive ni tekshiring (D:, E:, F: va boshqa)\nva uni icons/ folderi mavjud bo'lsin."
+            else:
+                msg = "USB dagi icons/ folderi topilmadi.\n\nUSB montaj yo'llarini tekshiring:\n/media, /mnt, /tmp, /root, /home, /run/media"
+            
+            msg_box = QMessageBox(QMessageBox.Icon.Warning, "Topilmadi", msg, QMessageBox.StandardButton.Ok, self)
+            _center_message_box_on_parent(msg_box, self)
+            msg_box.exec()
+            return
+        
+        if len(usb_paths) > 1:
+            # If multiple paths found, use first one or show selection
+            source_icons_dir = usb_paths[0]
+        else:
+            source_icons_dir = usb_paths[0]
+        
+        self._import_icons_from_path(source_icons_dir)
+    
+    def _import_icons_from_path(self, source_dir):
+        """Import PNG icons from source directory to addicons folder."""
+        try:
+            # Create addicons directory if it doesn't exist
+            os.makedirs(ADDICONS_DIR, exist_ok=True)
+            
+            # Find all PNG files in source
+            png_files = glob.glob(os.path.join(source_dir, "*.png"))
+            
+            if not png_files:
+                msg = f"PNG fayllar topilmadi:\n{source_dir}\n\nUSBga icons/PNG fayllarini qo'yib qayta harakat qiling."
+                msg_box = QMessageBox(QMessageBox.Icon.Warning, "Topilmadi", msg, QMessageBox.StandardButton.Ok, self)
+                _center_message_box_on_parent(msg_box, self)
+                msg_box.exec()
+                return
+            
+            # Get icon size from first icon in icons folder for reference
+            ref_icon_size = None
+            default_icons = glob.glob(os.path.join(ICONS_DIR, "*.png"))
+            if default_icons:
+                try:
+                    pixmap = QPixmap(default_icons[0])
+                    if not pixmap.isNull():
+                        ref_icon_size = (pixmap.width(), pixmap.height())
+                except Exception:
+                    pass
+            
+            # Copy PNG files, maintaining exact size
+            copied_count = 0
+            for src_file in png_files:
+                try:
+                    filename = os.path.basename(src_file)
+                    dst_file = os.path.join(ADDICONS_DIR, filename)
+                    
+                    # Load source image
+                    src_pixmap = QPixmap(src_file)
+                    if src_pixmap.isNull():
+                        continue
+                    
+                    # If reference size exists, scale to match (maintaining aspect ratio)
+                    if ref_icon_size:
+                        src_pixmap = src_pixmap.scaledToWidth(
+                            ref_icon_size[0],
+                            Qt.TransformationMode.SmoothTransformation
+                        )
+                    
+                    # Save to destination
+                    if src_pixmap.save(dst_file, "PNG"):
+                        copied_count += 1
+                except Exception as exc:
+                    print(f"Icon nusxa olishda xato: {src_file}: {exc}")
+            
+            if copied_count > 0:
+                # Refresh icon options
+                self.icon_options = []
+                for svc in DEFAULT_CONFIG.get("services", {}).values():
+                    icon_name = svc.get("icon")
+                    if icon_name and icon_name not in self.icon_options:
+                        self.icon_options.append(icon_name)
+                
+                if os.path.isdir(ADDICONS_DIR):
+                    for png_file in glob.glob(os.path.join(ADDICONS_DIR, "*.png")):
+                        icon_name = os.path.basename(png_file)
+                        if icon_name not in self.icon_options:
+                            self.icon_options.append(icon_name)
+                
+                self._set_status(f"{copied_count} ta icon import qilindi", "#22c55e")
+                self._refresh_icon_combos()
+                msg_box = QMessageBox(
+                    QMessageBox.Icon.Information,
+                    "Muvaffaqiyat",
+                    f"{copied_count} ta PNG icon import qilindi.\n\nBirma-bir ustiga bosib tanlashingiz mumkin.",
+                    QMessageBox.StandardButton.Ok,
+                    self,
+                )
+                _center_message_box_on_parent(msg_box, self)
+                msg_box.exec()
+            else:
+                msg = f"Hech qanday icon import qilib bo'lmadi.\n\nUsb manzilin tekshiring: {source_dir}"
+                msg_box = QMessageBox(QMessageBox.Icon.Warning, "Xato", msg, QMessageBox.StandardButton.Ok, self)
+                _center_message_box_on_parent(msg_box, self)
+                msg_box.exec()
+        except Exception as exc:
+            self._set_status(f"Import xatosi: {exc}", "#ef4444")
+            msg_box = QMessageBox(
+                QMessageBox.Icon.Critical,
+                "Xato",
+                f"Icon import qilishda xato:\n{exc}",
+                QMessageBox.StandardButton.Ok,
+                self,
+            )
+            _center_message_box_on_parent(msg_box, self)
+            msg_box.exec()
+    
+    def _reset_defaults(self):
+        msg_box = QMessageBox(
+            QMessageBox.Icon.Question,
             "Tasdiqlang",
             "Barcha sozlamalar standartga qaytadi. Davom etilsinmi?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+            self,
         )
+        msg_box.setDefaultButton(QMessageBox.StandardButton.No)
+        _center_message_box_on_parent(msg_box, self)
+        answer = msg_box.exec()
         if answer != QMessageBox.StandardButton.Yes:
             return
 

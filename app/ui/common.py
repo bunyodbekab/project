@@ -102,8 +102,25 @@ def _darken_gradient_qss(gradient_qss, amount=0.2):
 def _icon_path(icon_file):
     if not icon_file:
         return ""
+    
+    # First check in icons/ folder
     path = os.path.join(ICONS_DIR, icon_file)
-    return path if os.path.exists(path) else ""
+    if os.path.exists(path):
+        return path
+    
+    # Then check in addicons/ folder
+    addicons_dir = os.path.join(os.path.dirname(ICONS_DIR), "addicons")
+    path = os.path.join(addicons_dir, icon_file)
+    if os.path.exists(path):
+        return path
+    
+    # If icon not found, use first available icon from icons/ folder as fallback
+    import glob
+    default_icons = glob.glob(os.path.join(ICONS_DIR, "*.png"))
+    if default_icons:
+        return default_icons[0]
+    
+    return ""
 
 
 def _to_int(value, fallback, min_value=0):

@@ -62,6 +62,17 @@ def _install_qt_message_filter():
     _QT_PREV_MSG_HANDLER = qInstallMessageHandler(_QT_MSG_HANDLER)
 
 
+def _clear_sessions_on_startup():
+    """Clear session history file to prevent it from growing too large."""
+    try:
+        from app.storage import SESSIONS_FILE
+        import json
+        with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
+            json.dump([], f)
+    except Exception:
+        pass  # Silent fail - session clearing is not critical
+
+
 def main():
     delegated = _ensure_venv_runtime()
     if delegated is not None:
@@ -69,8 +80,11 @@ def main():
 
     _force_qt_scale()
     _install_qt_message_filter()
+    _clear_sessions_on_startup()
 
-    from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtWidgets import QApplication, QSplashScreen
+    from PyQt6.QtGui import QPixmap, QColor, QFont
+    from PyQt6.QtCore import Qt
 
     from app.settings import app_font, register_montserrat_fonts
     from app.ui.moykaui import RotatedWindow
@@ -79,8 +93,19 @@ def main():
     register_montserrat_fonts()
     app.setFont(app_font(11, bold=True))
 
+    # Show loading/splash screen
+    splash_pixmap = QPixmap(400, 300)
+    splash_pixmap.fill(QColor(40, 40, 40))
+    splash = QSplashScreen(splash_pixmap)
+    
+    # Add loading text
+    splash.showMessage("Yuklanmoqda...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter, QColor(255, 255, 255))
+    splash.show()
+    app.processEvents()
+
     window = RotatedWindow()
     window.show_ui()
+    splash.finish(window)
     return app.exec()
 
 

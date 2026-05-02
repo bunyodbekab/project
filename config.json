@@ -58,7 +58,7 @@
       "icon": "vosk.png",
       "theme": "vosk",
       "active": true,
-      "is_available": false
+      "is_available": true
     },
     "XIZMAT7": {
       "display_name": "XIZMAT7",
@@ -68,7 +68,7 @@
       "icon": "osmos.png",
       "theme": "quritish",
       "active": false,
-      "is_available": false
+      "is_available": true
     },
     "XIZMAT8": {
       "display_name": "XIZMAT8",
@@ -78,7 +78,7 @@
       "icon": "suv.png",
       "theme": "suv",
       "active": false,
-      "is_available": false
+      "is_available": true
     }
   },
   "shift_register": {
@@ -93,7 +93,7 @@
     "percent": 0,
     "threshold": 0
   },
-  "total_earned": 382727,
+  "total_earned": 385247,
   "pause": {
     "freeSeconds": 50,
     "paidSecondsPer5000": 120
@@ -103,5 +103,12 @@
     "minBalance": 9000,
     "rewardPerCorrect": 500
   },
-  "show_icons": true
+  "show_icons": true,
+  "device_lock": {
+    "cpu_serial": "uuid-586c2541571b",
+    "mac_addresses": [
+      "58:6c:25:41:57:1b"
+    ],
+    "bound_at": "2026-04-17T13:38:24+00:00"
+  }
 }
