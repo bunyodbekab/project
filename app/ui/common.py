@@ -17,49 +17,49 @@ from PyQt6.QtWidgets import (
 from app.settings import ICONS_DIR, app_font
 
 
-# HTML/CSS-dagi original colors
+# iOS Dark Mode ranglar
 THEME_COLORS = {
     "suv": {
-        "gradient_css": "linear-gradient(90deg, #3366de 0%, #2f62d7 100%)",
-        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3366de, stop:1 #2f62d7)",
-        "swatch_color": "#4c88ff",
-        "border_color": "#4c88ff",
+        "gradient_css": "linear-gradient(145deg, #0A84FF 0%, #0066CC 100%)",
+        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0A84FF, stop:1 #0066CC)",
+        "swatch_color": "#0A84FF",
+        "border_color": "#0A84FF",
     },
     "osmos": {
-        "gradient_css": "linear-gradient(90deg, #25a2d8 0%, #2298cf 100%)",
-        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #25a2d8, stop:1 #2298cf)",
-        "swatch_color": "#43caff",
-        "border_color": "#43caff",
+        "gradient_css": "linear-gradient(145deg, #5AC8FA 0%, #32ADE6 100%)",
+        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #5AC8FA, stop:1 #32ADE6)",
+        "swatch_color": "#5AC8FA",
+        "border_color": "#5AC8FA",
     },
     "aktiv": {
-        "gradient_css": "linear-gradient(90deg, #cf49dc 0%, #c540d8 100%)",
-        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #cf49dc, stop:1 #c540d8)",
-        "swatch_color": "#e8aff3",
-        "border_color": "#e8aff3",
+        "gradient_css": "linear-gradient(145deg, #BF5AF2 0%, #9B44D4 100%)",
+        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #BF5AF2, stop:1 #9B44D4)",
+        "swatch_color": "#BF5AF2",
+        "border_color": "#BF5AF2",
     },
     "pena": {
-        "gradient_css": "linear-gradient(90deg, #2cadc6 0%, #2aa8c0 100%)",
-        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2cadc6, stop:1 #2aa8c0)",
-        "swatch_color": "#47d8ec",
-        "border_color": "#47d8ec",
+        "gradient_css": "linear-gradient(145deg, #32ADE6 0%, #2090C8 100%)",
+        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #32ADE6, stop:1 #2090C8)",
+        "swatch_color": "#32ADE6",
+        "border_color": "#32ADE6",
     },
     "nano": {
-        "gradient_css": "linear-gradient(90deg, #6b6de8 0%, #6063df 100%)",
-        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6b6de8, stop:1 #6063df)",
-        "swatch_color": "#878bf7",
-        "border_color": "#878bf7",
+        "gradient_css": "linear-gradient(145deg, #5E5CE6 0%, #4845C2 100%)",
+        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #5E5CE6, stop:1 #4845C2)",
+        "swatch_color": "#5E5CE6",
+        "border_color": "#5E5CE6",
     },
     "vosk": {
-        "gradient_css": "linear-gradient(90deg, #f4a706 0%, #f1a102 100%)",
-        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #f4a706, stop:1 #f1a102)",
-        "swatch_color": "#ffd254",
-        "border_color": "#ffd254",
+        "gradient_css": "linear-gradient(145deg, #FF9F0A 0%, #E07D00 100%)",
+        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #FF9F0A, stop:1 #E07D00)",
+        "swatch_color": "#FF9F0A",
+        "border_color": "#FF9F0A",
     },
     "quritish": {
-        "gradient_css": "linear-gradient(90deg, #1f9b6c 0%, #17895c 100%)",
-        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1f9b6c, stop:1 #17895c)",
-        "swatch_color": "#3ad89b",
-        "border_color": "#3ad89b",
+        "gradient_css": "linear-gradient(145deg, #30D158 0%, #25A244 100%)",
+        "gradient_qss": "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #30D158, stop:1 #25A244)",
+        "swatch_color": "#30D158",
+        "border_color": "#30D158",
     },
 }
 
@@ -203,11 +203,11 @@ class _UnavailableOverlay(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         clip_path = QPainterPath()
-        clip_path.addRoundedRect(QRectF(rect), 10, 10)
+        clip_path.addRoundedRect(QRectF(rect), 18, 18)
         painter.setClipPath(clip_path)
-        painter.fillRect(rect, QColor(100, 116, 139, 70))
+        painter.fillRect(rect, QColor(28, 28, 30, 80))
 
-        pen = QPen(QColor(239, 68, 68, 220))
+        pen = QPen(QColor(255, 69, 58, 200))
         pen.setWidth(max(3, int(min(rect.width(), rect.height()) * 0.04)))
         painter.setPen(pen)
 
@@ -359,50 +359,50 @@ class ServiceButton(QPushButton):
     def _apply_style(self):
         if self._in_game_mode:
             if self._game_feedback == "correct":
-                display_gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #16a34a, stop:1 #15803d)"
-                border_css = "10px solid #bbf7d0"
-                pressed_border_css = "12px solid #dcfce7"
+                display_gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #30D158, stop:1 #25A244)"
+                border_css = "5px solid #30D158"
+                pressed_border_css = "6px solid #62E88A"
             elif self._game_feedback == "wrong":
-                display_gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #dc2626, stop:1 #b91c1c)"
-                border_css = "10px solid #fecaca"
-                pressed_border_css = "12px solid #fee2e2"
+                display_gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #FF453A, stop:1 #D93025)"
+                border_css = "5px solid #FF453A"
+                pressed_border_css = "6px solid #FF6961"
             else:
-                display_gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1d4ed8, stop:1 #1e40af)"
-                border_css = "10px solid #bfdbfe"
-                pressed_border_css = "12px solid #dbeafe"
+                display_gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0A84FF, stop:1 #0066CC)"
+                border_css = "4px solid rgba(10, 132, 255, 0.6)"
+                pressed_border_css = "5px solid #0A84FF"
 
-            pressed_gradient = _darken_gradient_qss(display_gradient, amount=0.2)
+            pressed_gradient = _darken_gradient_qss(display_gradient, amount=0.15)
             if self._pulse_active:
                 display_gradient = pressed_gradient
             text_color = "#ffffff"
         elif self._available:
             gradient, border_color = _theme_palette(self._theme)
-            pressed_gradient = _darken_gradient_qss(gradient, amount=0.2)
+            pressed_gradient = _darken_gradient_qss(gradient, amount=0.18)
             display_gradient = pressed_gradient if self._pulse_active else gradient
             highlighted = self._active or self._pulse_active
-            active_border_color = "#f8fafc" if highlighted else border_color
-            border_width = "12px" if self._pulse_active else "10px"
-            border_css = f"{border_width} solid {active_border_color}"
-            pressed_border_css = "12px solid #f8fafc"
+            border_width = "6px" if highlighted else "4px"
+            alpha = "1.0" if highlighted else "0.55"
+            border_css = f"{border_width} solid {border_color}"
+            pressed_border_css = f"6px solid {border_color}"
             text_color = "#ffffff"
         else:
-            display_gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #8f9db0, stop:1 #758295)"
+            display_gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #3A3A3C, stop:1 #2C2C2E)"
             pressed_gradient = display_gradient
-            border_css = "10px solid #94a3b8"
+            border_css = "3px solid rgba(84, 84, 88, 0.5)"
             pressed_border_css = border_css
-            text_color = "#e2e8f0"
+            text_color = "rgba(235, 235, 245, 0.4)"
 
         self.setStyleSheet(
             f"""
             QPushButton#ServiceButton {{
                 background: {display_gradient};
                 border: {border_css};
-                border-radius: 12px;
+                border-radius: 18px;
             }}
             QPushButton#ServiceButton:disabled {{
                 background: {display_gradient};
                 border: {border_css};
-                border-radius: 12px;
+                border-radius: 18px;
             }}
             QPushButton#ServiceButton:pressed {{
                 background: {pressed_gradient};
@@ -411,8 +411,8 @@ class ServiceButton(QPushButton):
             QLabel#ServiceText {{
                 color: {text_color};
                 font-family: Montserrat, sans-serif;
-                font-weight: 800;
-                letter-spacing: 0.015em;
+                font-weight: 700;
+                letter-spacing: 0.01em;
                 padding: 4px 12px 4px 4px;
             }}
             """
@@ -618,26 +618,26 @@ class PauseButton(QFrame):
         self.right_mark.setVisible(show_marks)
 
         if self._mode == "game":
-            border_color = "#d9f99d" if self._active else "#84cc16"
-            gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #65a30d, stop:1 #4d7c0f)"
-            fg = "#f7fee7"
+            border_color = "#30D158" if self._active else "#25A244"
+            gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #30D158, stop:1 #25A244)"
+            fg = "#ffffff"
         elif self._free:
-            # Free pause - yellow
-            border_color = "#f1c232"
-            gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ffd84d, stop:1 #f7c534)"
-            fg = "#1d1d1d"
+            # Free pause - iOS yellow
+            border_color = "#FFD60A"
+            gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #FFD60A, stop:1 #FFBA00)"
+            fg = "#000000"
         else:
-            # Paid pause - red
-            border_color = "#f8fafc" if self._active else "#e52235"
-            gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #f53a46, stop:1 #ed2435)"
+            # Paid pause - iOS red
+            border_color = "#ffffff" if self._active else "#FF453A"
+            gradient = "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #FF453A, stop:1 #D93025)"
             fg = "#ffffff"
 
         if self._pressed_visual:
-            border_color = "#f8fafc"
-            border_width = "12px"
-            gradient = _darken_gradient_qss(gradient, amount=0.2)
+            border_color = "#ffffff"
+            border_width = "6px"
+            gradient = _darken_gradient_qss(gradient, amount=0.18)
         else:
-            border_width = "10px"
+            border_width = "4px"
 
         main_font_px = self._main_font_px
         if self._free:
@@ -652,12 +652,12 @@ class PauseButton(QFrame):
             QFrame#PauseButton {{
                 background: {gradient};
                 border: {border_width} solid {border_color};
-                border-radius: 12px;
+                border-radius: 18px;
                 color: {fg};
             }}
             QLabel {{
                 color: {fg};
-                font-weight: 800;
+                font-weight: 700;
             }}
             """
         )

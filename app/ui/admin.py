@@ -118,48 +118,67 @@ class PinDialog(QDialog):
         self.setStyleSheet(
             """
             QDialog {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0c183b, stop:1 #0f1f4a);
-                color: #f8fafc;
+                background: #000000;
+                color: #ffffff;
             }
             QLabel {
-                color: #f8fafc;
+                color: #ffffff;
             }
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4c88ff, stop:1 #3a6fd4);
-                color: #f8fafc;
-                border: 1px solid rgba(76, 136, 255, 0.5);
-                border-radius: 10px;
+                background: #0A84FF;
+                color: #ffffff;
+                border: none;
+                border-radius: 14px;
                 font-size: 26px;
-                font-weight: 800;
+                font-weight: 700;
                 padding: 12px;
             }
             QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3a6fd4, stop:1 #2d5cb3);
+                background: #0066CC;
             }
             QPushButton#SubmitBtn {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4c88ff, stop:1 #3a6fd4);
+                background: #0A84FF;
                 font-size: 30px;
+                border-radius: 16px;
+            }
+            QPushButton#SubmitBtn:pressed {
+                background: #0066CC;
             }
             QPushButton#ClearBtn {
-                background: rgba(76, 136, 255, 0.08);
-                border-color: rgba(76, 136, 255, 0.3);
-                color: #a8d5ff;
+                background: rgba(120, 120, 128, 0.22);
+                color: #0A84FF;
                 font-size: 30px;
+                border-radius: 16px;
+            }
+            QPushButton#ClearBtn:pressed {
+                background: rgba(120, 120, 128, 0.38);
             }
             QPushButton#CancelBtn {
+                background: rgba(120, 120, 128, 0.22);
+                color: #ffffff;
                 font-size: 30px;
+                border-radius: 16px;
+            }
+            QPushButton#CancelBtn:pressed {
+                background: rgba(120, 120, 128, 0.38);
             }
             QPushButton#ResetMoneyBtn {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #d04141, stop:1 #a93333);
-                border-color: rgba(255, 130, 130, 0.5);
-                color: #fff5f5;
+                background: #FF453A;
+                color: #ffffff;
                 font-size: 30px;
+                border-radius: 14px;
             }
             QPushButton#ResetMoneyBtn:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #a93333, stop:1 #812626);
+                background: #D93025;
             }
             QPushButton#DigitBtn {
+                background: #1C1C1E;
+                color: #ffffff;
                 font-size: 52px;
+                border-radius: 16px;
+            }
+            QPushButton#DigitBtn:pressed {
+                background: #3A3A3C;
             }
             """
         )
@@ -175,7 +194,7 @@ class PinDialog(QDialog):
 
         title = QLabel("PIN kiriting")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size: 52px; font-weight: 900;")
+        title.setStyleSheet("font-size: 52px; font-weight: 700; color: #ffffff;")
         title.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         self._pin_dot_size = 64
@@ -197,7 +216,7 @@ class PinDialog(QDialog):
 
         self.error_label = QLabel("")
         self.error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.error_label.setStyleSheet("color: #ff9a9a; font-size: 24px; min-height: 36px;")
+        self.error_label.setStyleSheet("color: #FF453A; font-size: 24px; min-height: 36px; font-weight: 600;")
         self.error_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         top_layout.addStretch(1)
@@ -291,8 +310,8 @@ class PinDialog(QDialog):
     def _refresh_dots(self):
         for idx, dot in enumerate(self.pin_dot_items):
             is_filled = idx < len(self._pin_value)
-            bg = "#f8fafc" if is_filled else "rgba(248, 250, 252, 0.06)"
-            border = "#f8fafc" if is_filled else "rgba(248, 250, 252, 0.78)"
+            bg = "#0A84FF" if is_filled else "rgba(120, 120, 128, 0.22)"
+            border = "#0A84FF" if is_filled else "rgba(84, 84, 88, 0.65)"
             dot.setStyleSheet(
                 f"background: {bg};"
                 f"border: {self._pin_dot_border}px solid {border};"
@@ -373,30 +392,31 @@ class AdminDialog(QDialog):
         self.setStyleSheet(
             """
             QDialog {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0c183b, stop:1 #0f1f4a);
-                color: #f8fafc;
+                background: #000000;
+                color: #ffffff;
             }
             QLabel {
-                color: #f8fafc;
+                color: #ffffff;
             }
             QLabel#StatusLabel {
                 font-size: 22px;
-                color: #60a5fa;
+                color: #0A84FF;
             }
             QLineEdit, QComboBox {
-                background: rgba(255, 255, 255, 0.08);
-                border: 1px solid rgba(255, 255, 255, 0.2);
-                border-radius: 8px;
-                color: #f8fafc;
+                background: rgba(120, 120, 128, 0.18);
+                border: 1px solid rgba(84, 84, 88, 0.65);
+                border-radius: 10px;
+                color: #ffffff;
                 padding: 10px 14px;
                 font-size: 22px;
             }
             QLineEdit:focus, QComboBox:focus {
-                border: 1px solid #4c88ff;
+                border: 1.5px solid #0A84FF;
+                background: rgba(10, 132, 255, 0.12);
             }
             QComboBox::drop-down {
                 width: 34px;
-                border-left: 1px solid rgba(255, 255, 255, 0.2);
+                border-left: 1px solid rgba(84, 84, 88, 0.65);
             }
             QComboBox#IconOnlyCombo {
                 background: transparent;
@@ -413,58 +433,78 @@ class AdminDialog(QDialog):
                 height: 0px;
             }
             QComboBox QAbstractItemView {
-                background: rgba(12, 24, 59, 0.98);
-                color: #f8fafc;
-                border: 1px solid rgba(126, 174, 248, 0.55);
-                selection-background-color: #2d6bd8;
+                background: #1C1C1E;
+                color: #ffffff;
+                border: 1px solid rgba(84, 84, 88, 0.65);
+                selection-background-color: #0A84FF;
                 selection-color: #ffffff;
                 font-size: 22px;
                 outline: none;
             }
             QTableWidget {
-                background: rgba(10, 34, 78, 0.6);
-                border: 1px solid rgba(126, 174, 248, 0.28);
-                gridline-color: rgba(126, 174, 248, 0.28);
+                background: #1C1C1E;
+                border: 1px solid rgba(84, 84, 88, 0.5);
+                gridline-color: rgba(84, 84, 88, 0.4);
                 font-size: 22px;
+                border-radius: 12px;
             }
             QHeaderView::section {
-                background: rgba(126, 174, 248, 0.18);
-                color: #e2e8f0;
+                background: #2C2C2E;
+                color: rgba(235, 235, 245, 0.7);
                 font-size: 21px;
-                font-weight: 800;
-                border: 1px solid rgba(126, 174, 248, 0.28);
+                font-weight: 700;
+                border: none;
+                border-bottom: 1px solid rgba(84, 84, 88, 0.5);
                 padding: 10px;
             }
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4c88ff, stop:1 #3a6fd4);
-                border: 1px solid rgba(76, 136, 255, 0.5);
-                border-radius: 10px;
+                background: #0A84FF;
+                border: none;
+                border-radius: 12px;
                 color: #ffffff;
                 padding: 12px 18px;
                 font-size: 22px;
-                font-weight: 800;
+                font-weight: 700;
             }
             QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3a6fd4, stop:1 #2d5cb3);
+                background: #0066CC;
             }
             QPushButton#SaveBtn {
-                background: #2d6bd8;
+                background: #0A84FF;
+                border-radius: 14px;
+            }
+            QPushButton#SaveBtn:pressed {
+                background: #0066CC;
             }
             QPushButton#ResetBtn {
-                background: #274f99;
-                border-color: #6fa1f5;
+                background: rgba(120, 120, 128, 0.28);
+                color: #ffffff;
+                border-radius: 14px;
+            }
+            QPushButton#ResetBtn:pressed {
+                background: rgba(120, 120, 128, 0.45);
             }
             QPushButton#CloseBtn {
-                background: #20478f;
-                border-color: #7eaef8;
+                background: rgba(120, 120, 128, 0.28);
+                color: #ffffff;
+                border-radius: 14px;
+            }
+            QPushButton#CloseBtn:pressed {
+                background: rgba(120, 120, 128, 0.45);
             }
             QPushButton#RebootBtn {
-                background: #d97706;
-                border-color: #f59e0b;
+                background: #FF9F0A;
+                border-radius: 14px;
+            }
+            QPushButton#RebootBtn:pressed {
+                background: #E07D00;
             }
             QPushButton#ShutdownBtn {
-                background: #b91c1c;
-                border-color: #ef4444;
+                background: #FF453A;
+                border-radius: 14px;
+            }
+            QPushButton#ShutdownBtn:pressed {
+                background: #D93025;
             }
             QPushButton#SaveBtn, QPushButton#ResetBtn, QPushButton#CloseBtn {
                 font-size: 26px;
@@ -475,34 +515,37 @@ class AdminDialog(QDialog):
                 min-height: 78px;
             }
             QPushButton#CloseTopBtn {
-                background: #20478f;
-                border-color: #7eaef8;
+                background: rgba(120, 120, 128, 0.28);
+                color: #ffffff;
+                border-radius: 12px;
                 font-size: 22px;
                 min-height: 58px;
             }
+            QPushButton#CloseTopBtn:pressed {
+                background: rgba(120, 120, 128, 0.45);
+            }
             QCheckBox#SwitchCheck {
                 font-size: 22px;
-                font-weight: 700;
-                color: #dbe9ff;
+                font-weight: 600;
+                color: #ffffff;
                 spacing: 14px;
             }
             QCheckBox#SwitchCheck::indicator {
-                width: 58px;
-                height: 32px;
-                border-radius: 16px;
-                border: 2px solid rgba(248, 250, 252, 0.48);
-                background: rgba(160, 174, 192, 0.45);
+                width: 51px;
+                height: 31px;
+                border-radius: 15px;
+                border: none;
+                background: rgba(120, 120, 128, 0.32);
             }
             QCheckBox#SwitchCheck::indicator:checked {
-                background: #22c55e;
-                border: 2px solid #86efac;
+                background: #30D158;
             }
             QCheckBox#SwitchCheck::indicator:unchecked {
-                background: rgba(71, 85, 105, 0.75);
+                background: rgba(120, 120, 128, 0.32);
             }
             QLabel#SwitchStateLabel {
                 font-size: 14px;
-                font-weight: 800;
+                font-weight: 700;
                 border-radius: 8px;
                 padding: 3px 8px;
             }
@@ -517,9 +560,9 @@ class AdminDialog(QDialog):
         title_col = QVBoxLayout()
 
         title_eyebrow = QLabel("Admin panel")
-        title_eyebrow.setStyleSheet("font-size: 12px; color: #b6cdf5; font-weight: 700;")
+        title_eyebrow.setStyleSheet("font-size: 12px; color: rgba(235, 235, 245, 0.5); font-weight: 600; letter-spacing: 0.08em;")
         title = QLabel("Sozlamalar")
-        title.setStyleSheet("font-size: 30px; font-weight: 800; color: #cfe1ff;")
+        title.setStyleSheet("font-size: 30px; font-weight: 700; color: #ffffff;")
         title_col.addWidget(title_eyebrow)
         title_col.addWidget(title)
 
@@ -528,9 +571,9 @@ class AdminDialog(QDialog):
 
         self.total_label = QLabel("")
         self.total_label.setStyleSheet(
-            "font-size: 22px; font-weight: 800; color: #e9f2ff;"
-            "background: rgba(126, 174, 248, 0.2); border: 1px solid rgba(126, 174, 248, 0.45);"
-            "border-radius: 8px; padding: 8px 12px;"
+            "font-size: 22px; font-weight: 700; color: #ffffff;"
+            "background: rgba(10, 132, 255, 0.18); border: 1px solid rgba(10, 132, 255, 0.4);"
+            "border-radius: 12px; padding: 8px 16px;"
         )
         chip_height = 62
         self.total_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -542,7 +585,7 @@ class AdminDialog(QDialog):
 
         settings_card = QFrame()
         settings_card.setStyleSheet(
-            "QFrame { background: rgba(10,34,78,0.55); border: 1px solid rgba(126,174,248,0.28); border-radius: 12px; }"
+            "QFrame { background: #1C1C1E; border: 1px solid rgba(84,84,88,0.5); border-radius: 16px; }"
         )
         settings_layout = QGridLayout(settings_card)
         settings_layout.setContentsMargins(12, 12, 12, 12)
@@ -612,14 +655,14 @@ class AdminDialog(QDialog):
 
         services_card = QFrame()
         services_card.setStyleSheet(
-            "QFrame { background: rgba(10,34,78,0.55); border: 1px solid rgba(126,174,248,0.28); border-radius: 12px; }"
+            "QFrame { background: #1C1C1E; border: 1px solid rgba(84,84,88,0.5); border-radius: 16px; }"
         )
         services_layout = QVBoxLayout(services_card)
         services_layout.setContentsMargins(12, 12, 12, 12)
         services_layout.setSpacing(10)
 
         services_title = QLabel("Xizmatlar")
-        services_title.setStyleSheet("font-size: 22px; font-weight: 800;")
+        services_title.setStyleSheet("font-size: 22px; font-weight: 700; color: #ffffff;")
         services_layout.addWidget(services_title)
 
         self.service_table = QTableWidget(0, 6)
@@ -646,18 +689,18 @@ class AdminDialog(QDialog):
 
         keyboard_card = QFrame()
         keyboard_card.setStyleSheet(
-            "QFrame { background: rgba(10,34,78,0.58); border: 1px solid rgba(126,174,248,0.28); border-radius: 12px; }"
+            "QFrame { background: #1C1C1E; border: 1px solid rgba(84,84,88,0.5); border-radius: 16px; }"
         )
         keyboard_layout = QVBoxLayout(keyboard_card)
         keyboard_layout.setContentsMargins(10, 10, 10, 10)
         keyboard_layout.setSpacing(8)
 
         keyboard_label = QLabel("Virtual klaviatura")
-        keyboard_label.setStyleSheet("font-size: 19px; color: #b6cdf5; font-weight: 700;")
+        keyboard_label.setStyleSheet("font-size: 19px; color: rgba(235, 235, 245, 0.6); font-weight: 600;")
         keyboard_layout.addWidget(keyboard_label)
 
         self.keyboard_display = QLabel("Fokus: yo'q")
-        self.keyboard_display.setStyleSheet("font-size: 22px; color: #dbe9ff; font-weight: 800;")
+        self.keyboard_display.setStyleSheet("font-size: 22px; color: #ffffff; font-weight: 700;")
         keyboard_layout.addWidget(self.keyboard_display)
 
         key_rows = [
@@ -747,8 +790,8 @@ class AdminDialog(QDialog):
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setBrush(QColor(color_hex))
-        painter.setPen(QColor("#f8fafc"))
-        painter.drawRoundedRect(1, 1, 62, 36, 12, 12)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(1, 1, 62, 36, 14, 14)
         painter.end()
         return QIcon(pixmap)
 
@@ -759,7 +802,7 @@ class AdminDialog(QDialog):
         container_layout.setSpacing(4)
 
         cap = QLabel(label)
-        cap.setStyleSheet("font-size: 16px; color: #dce3f4; font-weight: 700;")
+        cap.setStyleSheet("font-size: 16px; color: rgba(235, 235, 245, 0.6); font-weight: 600;")
         container_layout.addWidget(cap)
         container_layout.addWidget(widget)
 
@@ -777,9 +820,9 @@ class AdminDialog(QDialog):
 
         holder.setStyleSheet(
             "QFrame#CenteredServiceCell {"
-            "border: 1px solid rgba(126, 174, 248, 0.55);"
-            "border-radius: 10px;"
-            "background: rgba(12, 24, 59, 0.22);"
+            "border: 1px solid rgba(84, 84, 88, 0.5);"
+            "border-radius: 12px;"
+            "background: #2C2C2E;"
             "}"
         )
         return holder
@@ -787,12 +830,12 @@ class AdminDialog(QDialog):
     def _update_switch_state_label(self, label, checked, on_text, off_text):
         checked = bool(checked)
         text = on_text if checked else off_text
-        fg = "#dcfce7" if checked else "#fee2e2"
-        bg = "rgba(34, 197, 94, 0.24)" if checked else "rgba(239, 68, 68, 0.22)"
-        border = "rgba(134, 239, 172, 0.72)" if checked else "rgba(252, 165, 165, 0.72)"
+        fg = "#ffffff" if checked else "rgba(235, 235, 245, 0.5)"
+        bg = "rgba(48, 209, 88, 0.22)" if checked else "rgba(120, 120, 128, 0.22)"
+        border = "rgba(48, 209, 88, 0.5)" if checked else "rgba(84, 84, 88, 0.5)"
         label.setText(text)
         label.setStyleSheet(
-            f"font-size: 14px; font-weight: 800; color: {fg}; "
+            f"font-size: 14px; font-weight: 700; color: {fg}; "
             f"background: {bg}; border: 1px solid {border}; border-radius: 8px; padding: 3px 8px;"
         )
 
@@ -1205,12 +1248,12 @@ class AdminDialog(QDialog):
         for cmd in commands:
             try:
                 subprocess.Popen(cmd)
-                self._set_status(f"Qurilma {action_label} buyrug'i yuborildi", "#f59e0b")
+                self._set_status(f"Qurilma {action_label} buyrug'i yuborildi", "#FF9F0A")
                 return
             except Exception as exc:
                 last_error = exc
 
-        self._set_status(f"{action_label.title()} buyrug'i yuborilmadi", "#ef4444")
+        self._set_status(f"{action_label.title()} buyrug'i yuborilmadi", "#FF453A")
         msg_box = QMessageBox(
             QMessageBox.Icon.Warning,
             "Xatolik",
@@ -1221,15 +1264,15 @@ class AdminDialog(QDialog):
         _center_message_box_on_parent(msg_box, self)
         msg_box.exec()
 
-    def _set_status(self, text, color="#60a5fa"):
+    def _set_status(self, text, color="#0A84FF"):
         self.status_label.setText(text)
-        self.status_label.setStyleSheet(f"font-size: 18px; color: {color};")
+        self.status_label.setStyleSheet(f"font-size: 18px; color: {color}; font-weight: 600;")
 
     def _save(self):
         payload = self._collect_settings()
         self.ui_ref.update_front_settings(payload)
         self.total_label.setText(f"Jami: {_format_money(self.ui_ref.cfg.get('total_earned', 0))} so'm")
-        self._set_status("Saqlandi", "#22c55e")
+        self._set_status("Saqlandi", "#30D158")
 
     def _show_clear_addicons_dialog(self):
         """Show dialog to confirm clearing addicons folder."""
@@ -1254,10 +1297,10 @@ class AdminDialog(QDialog):
                         os.remove(png_file)
                     except Exception as exc:
                         print(f"Faylni o'chirishda xato: {png_file}: {exc}")
-                self._set_status("Addicons tozalandi", "#22c55e")
+                self._set_status("Addicons tozalandi", "#30D158")
                 self._refresh_icon_combos()
         except Exception as exc:
-            self._set_status(f"Tozalashda xato: {exc}", "#ef4444")
+            self._set_status(f"Tozalashda xato: {exc}", "#FF453A")
     
     def _refresh_icon_combos(self):
         """Refresh icon combo boxes with current available icons."""
@@ -1316,7 +1359,7 @@ class AdminDialog(QDialog):
             icon_combo.setCurrentIndex(selected_idx)
     
     def _find_usb_icons_paths(self):
-        """Find possible USB mounted paths with icons folder - works on Windows and Linux."""
+        """Find possible source paths for icon import - works on Windows and Linux."""
         potential_paths = []
         
         if sys.platform == "win32":
@@ -1326,23 +1369,30 @@ class AdminDialog(QDialog):
                 drive_path = f"{drive}:\\"
                 if os.path.isdir(drive_path):
                     try:
-                        # Search for icons folder at root level
-                        icons_dir = os.path.join(drive_path, "icons")
-                        if os.path.isdir(icons_dir):
-                            potential_paths.append(icons_dir)
+                        # Search for aa/logo at root level first
+                        aa_logo_dir = os.path.join(drive_path, "aa", "logo")
+                        if os.path.isdir(aa_logo_dir):
+                            potential_paths.append(aa_logo_dir)
+
+                        # Search for logo folder at root level
+                        logo_dir = os.path.join(drive_path, "logo")
+                        if os.path.isdir(logo_dir):
+                            potential_paths.append(logo_dir)
                         
-                        # Search one level deep
-                        for item in glob.glob(os.path.join(drive_path, "*", "icons")):
+                        # Search one level deep for logo folders
+                        for item in glob.glob(os.path.join(drive_path, "*", "logo")):
                             if os.path.isdir(item):
                                 potential_paths.append(item)
                     except Exception:
                         continue
         else:
-            # Linux/Armbian: search mount points
+            # Linux/Armbian: search /aa/logo first, then other mount points
+            if os.path.isdir("/aa/logo"):
+                potential_paths.append("/aa/logo")
+
             common_mounts = [
                 "/media",
                 "/mnt",
-                "/aa",
                 "/tmp",
                 "/root",
                 "/home",
@@ -1366,26 +1416,26 @@ class AdminDialog(QDialog):
             except Exception:
                 pass  # Continue with default mount points
             
-            # Search for icons folders in all mount points
+            # Search for logo folders in all mount points
             for mount_base in common_mounts:
                 if not os.path.isdir(mount_base):
                     continue
                 
                 try:
-                    # Search up to 3 levels deep for icons folders
-                    for item in glob.glob(os.path.join(mount_base, "*", "icons")):
+                    # Search up to 3 levels deep for logo folders
+                    for item in glob.glob(os.path.join(mount_base, "*", "logo")):
                         if os.path.isdir(item):
                             potential_paths.append(item)
                     
                     # Two levels deep
-                    for item in glob.glob(os.path.join(mount_base, "*", "*", "icons")):
+                    for item in glob.glob(os.path.join(mount_base, "*", "*", "logo")):
                         if os.path.isdir(item):
                             potential_paths.append(item)
                     
-                    # Direct icons folder
-                    icons_dir = os.path.join(mount_base, "icons")
-                    if os.path.isdir(icons_dir):
-                        potential_paths.append(icons_dir)
+                    # Direct logo folder
+                    logo_dir = os.path.join(mount_base, "logo")
+                    if os.path.isdir(logo_dir):
+                        potential_paths.append(logo_dir)
                 except Exception:
                     continue  # Skip problematic directories
         
@@ -1398,10 +1448,9 @@ class AdminDialog(QDialog):
         if not usb_paths:
             # Show detailed error message
             if sys.platform == "win32":
-                msg = "USB dagi icons/ folderi topilmadi.\n\nUSB bilan tutashgan drive ni tekshiring (D:, E:, F: va boshqa)\nva uni icons/ folderi mavjud bo'lsin."
+                msg = "Icon manbai topilmadi.\n\nUSB bilan tutashgan drive ni tekshiring (D:, E:, F: va boshqa)\nva unda logo/ papka mavjud bo'lsin."
             else:
-                msg = "USB dagi icons/ folderi topilmadi.\n\nUSB montaj yo'llarini tekshiring:\n/media, /mnt, /tmp, /root, /home, /run/media"
-            
+                msg = "Icon manbai topilmadi.\n\n/aa/logo papkasi mavjudligini tekshiring.\nAgar u bo'lmasa, /media, /mnt, /tmp, /root, /home, /run/media yoki boshqa montaj yo'llarini ko'rib chiqing."
             msg_box = QMessageBox(QMessageBox.Icon.Warning, "Topilmadi", msg, QMessageBox.StandardButton.Ok, self)
             _center_message_box_on_parent(msg_box, self)
             msg_box.exec()
@@ -1481,7 +1530,7 @@ class AdminDialog(QDialog):
                         if icon_name not in self.icon_options:
                             self.icon_options.append(icon_name)
                 
-                self._set_status(f"{copied_count} ta icon import qilindi", "#22c55e")
+                self._set_status(f"{copied_count} ta icon import qilindi", "#30D158")
                 self._refresh_icon_combos()
                 msg_box = QMessageBox(
                     QMessageBox.Icon.Information,
@@ -1498,7 +1547,7 @@ class AdminDialog(QDialog):
                 _center_message_box_on_parent(msg_box, self)
                 msg_box.exec()
         except Exception as exc:
-            self._set_status(f"Import xatosi: {exc}", "#ef4444")
+            self._set_status(f"Import xatosi: {exc}", "#FF453A")
             msg_box = QMessageBox(
                 QMessageBox.Icon.Critical,
                 "Xato",
@@ -1525,6 +1574,6 @@ class AdminDialog(QDialog):
 
         self.ui_ref.reset_config_to_defaults()
         self._load_payload(self.ui_ref._settings_payload())
-        self._set_status("Standart sozlamalar tiklandi", "#f59e0b")
+        self._set_status("Standart sozlamalar tiklandi", "#FF9F0A")
 
 

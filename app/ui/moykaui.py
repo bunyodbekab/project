@@ -151,6 +151,7 @@ class MoykaUI(QWidget):
         self._raw_input = {line: 0 for line in INPUT_GPIO_TO_SERVICE}
         self._raw_input_changed_at = {line: 0.0 for line in INPUT_GPIO_TO_SERVICE}
         self._service_debounce_ms = 70
+        self._pul_debounce_ms = 50
         self._input_prime_left = 3
         self._inputs_primed = False
         self.input_timer.start()
@@ -241,38 +242,38 @@ class MoykaUI(QWidget):
         self.setStyleSheet(
             """
             QWidget#MoykaRoot {
-                background: qlineargradient(y1:0, y2:1, stop:0 #081433, stop:1 #0a1436);
-                color: #f8fafc;
+                background: #000000;
+                color: #ffffff;
             }
             QFrame#TopPanel {
-                background: qlineargradient(y1:0, y2:1, stop:0 #081433, stop:1 #0a1436);
-                border: 2px solid rgba(170, 206, 255, 145);
-                border-radius: 24px;
+                background: #1C1C1E;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 26px;
             }
             QFrame#Divider {
-                background: rgba(240, 248, 255, 230);
+                background: rgba(84, 84, 88, 0.65);
                 border: none;
-                max-height: 6px;
-                border-radius: 3px;
+                max-height: 1px;
+                border-radius: 1px;
             }
             QWidget#ControlsWrap {
                 background: transparent;
                 border: none;
             }
             QProgressBar#GameProgress {
-                background: rgba(15, 23, 42, 0.65);
-                border: 2px solid rgba(148, 163, 184, 0.45);
-                border-radius: 12px;
-                min-height: 24px;
-                max-height: 24px;
+                background: rgba(44, 44, 46, 0.9);
+                border: 1px solid rgba(84, 84, 88, 0.6);
+                border-radius: 10px;
+                min-height: 20px;
+                max-height: 20px;
                 text-align: center;
-                color: #e2e8f0;
-                font-size: 15px;
-                font-weight: 800;
+                color: #ffffff;
+                font-size: 13px;
+                font-weight: 700;
             }
             QProgressBar#GameProgress::chunk {
-                border-radius: 10px;
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #22c55e, stop:1 #16a34a);
+                border-radius: 9px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #30D158, stop:1 #25A244);
             }
             """
         )
@@ -311,13 +312,13 @@ class MoykaUI(QWidget):
         self.header_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.header_title.setWordWrap(True)
         self.header_title.setMinimumHeight(max(50, int(self._top_panel_height * 0.18)))
-        self.header_title.setStyleSheet("font-weight: 800; letter-spacing: 0.01em; color: #d9deeb; padding: 4px 12px; min-width: 200px;")
+        self.header_title.setStyleSheet("font-weight: 600; letter-spacing: 0.02em; color: rgba(235, 235, 245, 0.7); padding: 4px 12px; min-width: 200px;")
 
         self.header_main = QLabel(self.cfg.get("moyka_name", "MOYKA"))
         self.header_main.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.header_main.setWordWrap(True)
         self.header_main.setMinimumHeight(max(72, int(self._top_panel_height * 0.24)))
-        self.header_main.setStyleSheet("font-weight: 900; letter-spacing: 0.005em; color: #ffffff; padding: 4px 12px; min-width: 250px;")
+        self.header_main.setStyleSheet("font-weight: 700; letter-spacing: 0.005em; color: #ffffff; padding: 4px 12px; min-width: 250px;")
 
         self.header_title.setFont(app_font(self._title_px, bold=True))
         self.header_main.setFont(app_font(self._main_px, bold=True))
@@ -1048,15 +1049,15 @@ class MoykaUI(QWidget):
 
     def _header_color(self, mode, pause_status="off"):
         if self.device_locked:
-            return "#ff4d4d"
+            return "#FF453A"
         if self._low_balance_flash:
-            return "#ff4d4d"
+            return "#FF453A"
         if self.blink_timer.isActive() and self.blink_state:
-            return "#ff4d4d"
+            return "#FF453A"
         if mode == "game":
-            return "#dcfce7"
+            return "#30D158"
         if mode == "pause":
-            return "#ffd84d" if pause_status == "free" else "#ff4d4d"
+            return "#FFD60A" if pause_status == "free" else "#FF453A"
         return "#ffffff"
 
     def _state_dict(self):
@@ -1258,10 +1259,10 @@ class MoykaUI(QWidget):
             self.header_main.setTextFormat(Qt.TextFormat.PlainText)
             self.header_main.setText(main_text)
         self.header_title.setStyleSheet(
-            f"font-weight: 800; letter-spacing: 0.6px; color: {header_color};"
+            f"font-weight: 600; letter-spacing: 0.6px; color: {header_color};"
         )
         self.header_main.setStyleSheet(
-            f"font-weight: 800; letter-spacing: 0.6px; color: {header_color};"
+            f"font-weight: 700; letter-spacing: 0.6px; color: {header_color};"
         )
 
         title_scale = 1.0
@@ -1834,6 +1835,12 @@ class MoykaUI(QWidget):
                     val = prev
                 else:
                     val = self._raw_input.get(gpio_line, raw_val)
+            elif svc_name == "PUL":
+                last_change = self._raw_input_changed_at.get(gpio_line, now)
+                if (now - last_change) * 1000.0 < self._pul_debounce_ms:
+                    val = prev
+                else:
+                    val = self._raw_input.get(gpio_line, raw_val)
 
             if svc_name == "STOP":
                 if val == 1 and prev == 0:
@@ -1844,7 +1851,7 @@ class MoykaUI(QWidget):
             elif self.device_locked:
                 pass
             elif svc_name == "PUL":
-                if val == 1 and prev == 0:
+                if val == 0 and prev == 1:
                     self.add_money(1000)
             elif val == 1 and prev == 0:
                 front_key = self.hw_to_front.get(svc_name, svc_name)
@@ -1900,7 +1907,7 @@ class RotatedWindow(QWidget):
         sw = sg.width()
         sh = sg.height()
 
-        self.setStyleSheet("background: qlineargradient(y1:0, y2:1, stop:0 #081433, stop:1 #0a1436);")
+        self.setStyleSheet("background: #000000;")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)

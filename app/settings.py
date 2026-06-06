@@ -55,7 +55,7 @@ BLINK_WARN = 10
 DEBUG = False
 
 # Admin panelda o'yin sozlamalarini ko'rsatish/yashirish flag'i.
-SHOW_GAME_ADMIN_SETTINGS = False
+SHOW_GAME_ADMIN_SETTINGS = True
 
 FONT_FAMILY = "font/Montserrat/static"
 

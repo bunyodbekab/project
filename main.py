@@ -82,8 +82,8 @@ def main():
     _install_qt_message_filter()
     _clear_sessions_on_startup()
 
-    from PyQt6.QtWidgets import QApplication, QSplashScreen
-    from PyQt6.QtGui import QPixmap, QColor, QFont
+    from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtGui import QColor, QFont
     from PyQt6.QtCore import Qt
 
     from app.settings import app_font, register_montserrat_fonts
@@ -93,19 +93,8 @@ def main():
     register_montserrat_fonts()
     app.setFont(app_font(11, bold=True))
 
-    # Show loading/splash screen
-    splash_pixmap = QPixmap(400, 300)
-    splash_pixmap.fill(QColor(40, 40, 40))
-    splash = QSplashScreen(splash_pixmap)
-    
-    # Add loading text
-    splash.showMessage("Yuklanmoqda...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter, QColor(255, 255, 255))
-    splash.show()
-    app.processEvents()
-
     window = RotatedWindow()
     window.show_ui()
-    splash.finish(window)
     return app.exec()
 
 
