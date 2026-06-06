@@ -1,4 +1,6 @@
 import importlib
+import threading
+import time
 
 from app.settings import CHIP_NAME, DEBUG, INPUT_GPIO_TO_SERVICE, SHIFT_REGISTER_PINS
 from app.storage import load_config
@@ -36,6 +38,9 @@ class GPIOController:
         self.in_request = None
         self.relay_state = 0
         self._relay_power_enabled = False
+        self._gpio_lock = threading.Lock()
+        self._seq_id = 0
+        self._seq_running = False
 
         if self.debug:
             print("[DEBUG] Virtual GPIO rejimi yoqilgan. gpiod ishlatilmaydi.")
@@ -203,12 +208,13 @@ class GPIOController:
 
     def refresh_relay_outputs(self):
         """Re-apply current relay state to hardware without changing ON/OFF bits."""
-        if self.debug or not self.out_request:
+        if self.debug or not self.out_request or self._seq_running:
             return
 
         try:
-            self._shift_out(self.relay_state)
-            self._sync_relay_power()
+            with self._gpio_lock:
+                self._shift_out(self.relay_state)
+                self._sync_relay_power()
         except Exception as e:
             print(f"GPIO refresh xato: {e}")
 
@@ -257,7 +263,89 @@ class GPIOController:
                 return 0
         return 0
 
+    def set_exclusive_pin(self, name):
+        """relay_power OFF → 50ms → eski relay OFF → 20ms → yangi relay ON → 50ms → relay_power ON."""
+        if self.debug:
+            if not hasattr(self, "_virtual_state"):
+                self._virtual_state = {}
+            for svc in self.relay_map:
+                self._virtual_state[svc] = (svc == name)
+            relay_bit = self.relay_map.get(name)
+            self.relay_state = (1 << relay_bit) if relay_bit is not None else 0
+            self._sync_relay_power()
+            self._print_virtual_state(f"exclusive:{name}")
+            return
+
+        relay_bit = self.out_bits.get(name)
+        if relay_bit is None or not self.out_request:
+            return
+
+        self._seq_id += 1
+        seq_id = self._seq_id
+        t = threading.Thread(
+            target=self._exclusive_sequence,
+            args=(name, relay_bit, seq_id),
+            daemon=True,
+        )
+        t.start()
+
+    def _exclusive_sequence(self, name, relay_bit, seq_id):
+        self._seq_running = True
+        try:
+            def alive():
+                return self._seq_id == seq_id
+
+            # 1. relay_power OFF
+            with self._gpio_lock:
+                if not alive():
+                    return
+                self._set_shift_pin(self.relay_power_pin, False)
+                self._relay_power_enabled = False
+
+            # 2. 50ms kutish
+            time.sleep(0.050)
+
+            # 3. Eski relay OFF (agar yoniq bo'lsa)
+            with self._gpio_lock:
+                if not alive():
+                    return
+                if self.relay_state:
+                    self.relay_state = 0
+                    for svc in self.out_states:
+                        self.out_states[svc] = False
+                    self._shift_out(0)
+
+            # 4. 20ms kutish
+            time.sleep(0.020)
+
+            # 5. Yangi relay ON
+            with self._gpio_lock:
+                if not alive():
+                    return
+                new_state = 1 << relay_bit
+                for svc in self.out_states:
+                    self.out_states[svc] = (svc == name)
+                self.relay_state = new_state
+                self._shift_out(new_state)
+
+            # 6. 50ms kutish
+            time.sleep(0.050)
+
+            # 7. relay_power ON (agar relay_state nol bo'lmasa)
+            with self._gpio_lock:
+                if not alive():
+                    return
+                if self.relay_state:
+                    self._set_shift_pin(self.relay_power_pin, True)
+                    self._relay_power_enabled = True
+        finally:
+            if self._seq_id == seq_id:
+                self._seq_running = False
+
     def all_off(self):
+        self._seq_id += 1
+        self._seq_running = False
+
         if self.debug:
             if not hasattr(self, "_virtual_state"):
                 self._virtual_state = {}
@@ -271,11 +359,12 @@ class GPIOController:
         if not self.out_request:
             return
 
-        self.relay_state = 0
-        for name in self.out_states:
-            self.out_states[name] = False
-        self._shift_out(self.relay_state)
-        self._sync_relay_power()
+        with self._gpio_lock:
+            self.relay_state = 0
+            for name in self.out_states:
+                self.out_states[name] = False
+            self._shift_out(self.relay_state)
+            self._sync_relay_power()
 
     def cleanup(self):
         self.all_off()

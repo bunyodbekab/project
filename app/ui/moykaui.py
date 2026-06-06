@@ -1431,9 +1431,6 @@ class MoykaUI(QWidget):
         if self.pause_mode:
             self._stop_pause()
 
-        if self.is_running and self.active_service:
-            self._deactivate_pin(self.active_service)
-
         self._pause_hold_timer.stop()
         self._stop_hold_source = None
 
@@ -1865,8 +1862,7 @@ class MoykaUI(QWidget):
     def _activate_pin(self, name):
         if not name:
             return
-        self.gpio.all_off()
-        self.gpio.set_pin(name, 1)
+        self.gpio.set_exclusive_pin(name)
 
     def _deactivate_pin(self, name):
         if not name:
