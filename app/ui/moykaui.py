@@ -2,6 +2,8 @@
 
 import json
 import math
+import queue
+import threading
 import time
 from datetime import datetime
 from functools import partial
@@ -136,6 +138,25 @@ class MoykaUI(QWidget):
         self._game_feedback_timer.setSingleShot(True)
         self._game_feedback_timer.timeout.connect(self._on_game_feedback_timeout)
 
+        # Money insertion settle: game offer should only appear 1s after last pulse.
+        self._last_money_at = 0.0
+        self._money_settle_ms = 1000
+        self._money_settle_timer = QTimer(self)
+        self._money_settle_timer.setSingleShot(True)
+        self._money_settle_timer.timeout.connect(self._emit_state)
+
+        # Lock rejimida maxsus fleshkani avtomatik tekshirib turadi.
+        self._lock_usb_timer = QTimer(self)
+        self._lock_usb_timer.setInterval(3000)
+        self._lock_usb_timer.timeout.connect(self._poll_usb_unlock)
+
+        # Delay-relay: keeps a configured relay ON during every service and for
+        # `delay_relay.seconds` after the service stops.
+        self._delay_off_timer = QTimer(self)
+        self._delay_off_timer.setSingleShot(True)
+        self._delay_off_timer.timeout.connect(self._delay_relay_off_now)
+        self._delay_relay_on_name = ""
+
         self.service_timer = QTimer(self)
         self.service_timer.setInterval(1000)
         self.service_timer.timeout.connect(self._tick)
@@ -151,10 +172,20 @@ class MoykaUI(QWidget):
         self._raw_input = {line: 0 for line in INPUT_GPIO_TO_SERVICE}
         self._raw_input_changed_at = {line: 0.0 for line in INPUT_GPIO_TO_SERVICE}
         self._service_debounce_ms = 70
-        self._pul_debounce_ms = 50
         self._input_prime_left = 3
         self._inputs_primed = False
         self.input_timer.start()
+
+        self._pul_event_queue = queue.Queue()
+        self._pul_thread_running = False
+        self._pul_thread = None
+        self._pul_rise_ns = {}
+        self._pul_fall_ns = {}
+        self._pul_high_ms = {}
+        self._pul_low_ms = {}
+        self._pul_current_state = {}
+        self._pul_lockout_until_ns = {}
+        self._pul_lockout_ms = 80
 
         self._service_buttons = {}
         self._grid_dirty = True
@@ -167,6 +198,92 @@ class MoykaUI(QWidget):
             self._apply_device_lock_mode()
         self._emit_state()
         self._set_main_page_visible(True)
+
+        self._pul_debug_label = QLabel(self)
+        self._pul_debug_label.setStyleSheet(
+            "color: rgba(255,255,255,0.85);"
+            "background: rgba(0,0,0,0.55);"
+            "font-size: 13px;"
+            "font-family: monospace;"
+            "padding: 3px 10px;"
+            "border-radius: 5px;"
+        )
+        self._pul_debug_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._pul_debug_label.setText("PUL: kutilmoqda...")
+        self._pul_debug_label.adjustSize()
+        self._pul_debug_label.move(
+            (self.w - self._pul_debug_label.width()) // 2,
+            self.h - self._pul_debug_label.height() - 6,
+        )
+        self._pul_debug_label.raise_()
+        self._start_pul_thread()
+
+    def _start_pul_thread(self):
+        if self.gpio.debug:
+            print("[PUL] Debug rejim — thread ishlamaydi.")
+            return
+        if not self.gpio.pul_request:
+            print("[PUL] pul_request yo'q — thread ishlamaydi.")
+            return
+        self._pul_thread_running = True
+        self._pul_thread = threading.Thread(
+            target=self._pul_reader_loop,
+            name="PulReader",
+            daemon=True,
+        )
+        self._pul_thread.start()
+        print(f"[PUL] Edge-detection thread boshlandi. Lines: {self.gpio.pul_lines}")
+
+    def _pul_reader_loop(self):
+        """Background thread: kernel edge eventlarini queue ga yuboradi."""
+        while self._pul_thread_running:
+            try:
+                has_event = self.gpio.wait_pul_event(timeout_ms=50)
+                if not has_event:
+                    continue
+                events = self.gpio.read_pul_events()
+                for event in events:
+                    # gpiod 2.x: event.event_type (Edge.RISING_EDGE / Edge.FALLING_EDGE)
+                    # eski versiyalarda event.type bo'lishi mumkin
+                    et = getattr(event, "event_type", None)
+                    if et is None:
+                        et = getattr(event, "type", "UNKNOWN")
+                    self._pul_event_queue.put((
+                        int(event.line_offset),
+                        str(et),
+                        int(event.timestamp_ns),
+                    ))
+            except Exception as exc:
+                print(f"[PUL thread] xato: {exc}")
+                time.sleep(0.01)
+
+    def _process_pul_events(self):
+        """Main threadda queue dan eventlarni o'qib pul hisoblaydi."""
+        while True:
+            try:
+                gpio_line, etype, ts_ns = self._pul_event_queue.get_nowait()
+            except queue.Empty:
+                break
+            is_rising = "RISING" in etype.upper()
+            is_falling = "FALLING" in etype.upper()
+            if is_rising:
+                self._pul_current_state[gpio_line] = 1
+                prev_fall_ns = self._pul_fall_ns.get(gpio_line, 0)
+                self._pul_rise_ns[gpio_line] = ts_ns
+                if prev_fall_ns > 0:
+                    low_ms = (ts_ns - prev_fall_ns) / 1_000_000.0
+                    self._pul_low_ms[gpio_line] = low_ms
+                    # o'chdi (LOW davomiyligi) 40-110ms bo'lsa haqiqiy puls
+                    if 40.0 < low_ms < 110.0 and not self.device_locked:
+                        self._lock_buttons(0.15)
+                        self.add_money(1000)
+            elif is_falling:
+                self._pul_current_state[gpio_line] = 0
+                prev_rise_ns = self._pul_rise_ns.get(gpio_line, 0)
+                self._pul_fall_ns[gpio_line] = ts_ns
+                if prev_rise_ns > 0:
+                    self._pul_high_ms[gpio_line] = (ts_ns - prev_rise_ns) / 1_000_000.0
+            self._update_pul_display(gpio_line)
 
     def _apply_device_lock_mode(self):
         self._pause_hold_timer.stop()
@@ -193,7 +310,21 @@ class MoykaUI(QWidget):
         self.blink_state = False
         self._bonus_awarded = False
         self.pause_free_left = self.pause_free_credit
+        self._delay_off_timer.stop()
+        self._money_settle_timer.stop()
         self.gpio.all_off()
+        self._lock_usb_timer.start()
+
+    def _poll_usb_unlock(self):
+        """Lock rejimida har 3 soniyada maxsus fleshka suqilganini tekshiradi."""
+        if not self.device_locked:
+            self._lock_usb_timer.stop()
+            return
+        matched, _ = usb_password_matches(USB_UNLOCK_PASSWORD)
+        if not matched:
+            return
+        if self._try_unlock_from_usb():
+            self._lock_usb_timer.stop()
 
     def _try_unlock_from_usb(self):
         matched, password_path = usb_password_matches(USB_UNLOCK_PASSWORD)
@@ -308,7 +439,7 @@ class MoykaUI(QWidget):
         top_layout.setSpacing(int(self.h * 0.008))
 
 
-        self.header_title = QLabel("XUSH KELIBSIZ")
+        self.header_title = QLabel(self.cfg.get("welcome_text", "XUSH KELIBSIZ"))
         self.header_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.header_title.setWordWrap(True)
         self.header_title.setMinimumHeight(max(50, int(self._top_panel_height * 0.18)))
@@ -529,6 +660,24 @@ class MoykaUI(QWidget):
         game_min_balance = max(0, game_min_balance)
         game_reward = max(1, game_reward)
 
+        delay_raw = raw.get("delayRelay") if isinstance(raw.get("delayRelay"), dict) else {}
+        if not delay_raw and isinstance(raw.get("delay_relay"), dict):
+            delay_raw = raw.get("delay_relay")
+        cfg_delay = self.cfg.get("delay_relay") if isinstance(self.cfg.get("delay_relay"), dict) else {}
+        delay_service = str(
+            delay_raw.get("service")
+            if delay_raw.get("service") is not None
+            else cfg_delay.get("service", "")
+        ).strip()
+        delay_seconds = max(0, int(
+            delay_raw.get("seconds")
+            or delay_raw.get("delaySeconds")
+            or cfg_delay.get("seconds", 0)
+            or 0
+        ))
+        if delay_service and delay_service not in self.cfg.get("services", {}):
+            delay_service = ""
+
         total_buttons = raw.get("totalButtons") or raw.get("buttonCount") or len(norm_services) or len(self.cfg.get("services", {})) or 1
         total_buttons = max(1, min(8, int(total_buttons)))
 
@@ -547,6 +696,10 @@ class MoykaUI(QWidget):
                 "enabled": game_enabled,
                 "minBalance": game_min_balance,
                 "rewardPerCorrect": game_reward,
+            },
+            "delayRelay": {
+                "service": delay_service,
+                "seconds": delay_seconds,
             },
         }
 
@@ -597,7 +750,10 @@ class MoykaUI(QWidget):
             return False
         if self._is_game_busy():
             return False
-        return self.balance > cfg.get("minBalance", 0)
+        # Wait until money insertion has settled (1s of pulse silence).
+        if self._money_settle_timer.isActive():
+            return False
+        return self.balance >= cfg.get("minBalance", 0) and self.balance > 0
 
     def _game_option_front_keys(self):
         keys = []
@@ -988,6 +1144,15 @@ class MoykaUI(QWidget):
             return
 
         self.front_settings = norm
+
+        if isinstance(settings, dict):
+            welcome_raw = settings.get("welcomeText", settings.get("welcome_text"))
+            if welcome_raw is not None:
+                self.cfg["welcome_text"] = str(welcome_raw).strip() or "XUSH KELIBSIZ"
+            name_raw = settings.get("moykaName", settings.get("moyka_name"))
+            if name_raw is not None:
+                self.cfg["moyka_name"] = str(name_raw).strip() or "MOYKA"
+
         single_pin = str(norm.get("pin", self.cfg.get("admin_pin", "1234")))
         self.cfg["admin_pin"] = single_pin
         self.cfg["admin_pin_alt"] = single_pin
@@ -1011,6 +1176,16 @@ class MoykaUI(QWidget):
             "minBalance": int(game_cfg.get("minBalance", 10000) or 0),
             "rewardPerCorrect": int(game_cfg.get("rewardPerCorrect", 500) or 500),
         }
+
+        delay_cfg = norm.get("delayRelay", {}) or {}
+        self.cfg["delay_relay"] = {
+            "service": str(delay_cfg.get("service") or "").strip(),
+            "seconds": max(0, int(delay_cfg.get("seconds") or 0)),
+        }
+        # Always drop any pending off timer and release the previously-on relay
+        # when settings change, so stale latching can't happen.
+        self._delay_off_timer.stop()
+        self._delay_relay_off_now()
 
         for svc in norm.get("services", []):
             key = svc.get("name") or svc.get("key")
@@ -1039,6 +1214,11 @@ class MoykaUI(QWidget):
 
         save_config(self.cfg)
         self._rebuild_front_services()
+        self._emit_state()
+
+    def reset_total_earned(self):
+        self.cfg["total_earned"] = 0
+        save_config(self.cfg)
         self._emit_state()
 
     def _display_title_for_service(self, service_key):
@@ -1094,7 +1274,7 @@ class MoykaUI(QWidget):
         else:
             balance_value = max(0, self.balance)
             if balance_value <= 0:
-                title = "XUSH KELIBSIZ"
+                title = self.cfg.get("welcome_text", "XUSH KELIBSIZ")
                 main_text = self.cfg.get("moyka_name", "MOYKA")
             else:
                 title = "BALANS"
@@ -1140,6 +1320,7 @@ class MoykaUI(QWidget):
             "bonus": self.cfg.get("bonus", {}),
             "game": self.cfg.get("game", {}),
             "pause": self.cfg.get("pause", {}),
+            "delayRelay": self.cfg.get("delay_relay", {}),
             "totalButtons": len(self.cfg.get("services", {})),
             "services": [
                 {
@@ -1160,6 +1341,9 @@ class MoykaUI(QWidget):
                 for key, svc in self.cfg.get("services", {}).items()
             ],
             "moyka_name": self.cfg.get("moyka_name", "MOYKA"),
+            "moykaName": self.cfg.get("moyka_name", "MOYKA"),
+            "welcome_text": self.cfg.get("welcome_text", "XUSH KELIBSIZ"),
+            "welcomeText": self.cfg.get("welcome_text", "XUSH KELIBSIZ"),
         }
 
     def _refresh_service_grid(self):
@@ -1210,8 +1394,8 @@ class MoykaUI(QWidget):
         pause_main_px_raw = max(35, min(70, pause_text_responsive))
         pause_main_px = max(22, int(pause_main_px_raw / 1.2))
         pause_sub_px = max(12, int((pause_main_px_raw * 0.5) / 1.2))
-        # Use the same icon sizing formula as ServiceButton for consistency
-        pause_mark_px = max(70, min(90, int(btn_font_px * 0.95)))
+        # Icon o'lchamini tugma balandligiga moslaymiz — kesilib qolmasin.
+        pause_mark_px = max(28, min(90, int(pause_height * 0.55)))
         
         self.pause_button.setMinimumHeight(pause_height)
         self.pause_button.setMaximumHeight(pause_height)
@@ -1361,6 +1545,8 @@ class MoykaUI(QWidget):
             return
         self.balance += amount
         self._apply_bonus_if_needed()
+        self._last_money_at = time.monotonic()
+        self._money_settle_timer.start(self._money_settle_ms)
         self._emit_state()
         self._check_blink()
 
@@ -1799,13 +1985,39 @@ class MoykaUI(QWidget):
 
         QTimer.singleShot(700, reset_flash)
 
+    def _update_pul_display(self, gpio_line):
+        if not hasattr(self, "_pul_debug_label"):
+            return
+        high = self._pul_high_ms.get(gpio_line)
+        low = self._pul_low_ms.get(gpio_line)
+        state = "▲ HIGH" if self._pul_current_state.get(gpio_line) == 1 else "▼ LOW "
+        if high is not None and low is not None:
+            period = high + low
+            hz = 1000.0 / period if period > 0 else 0.0
+            text = f"{state}  |  yondi={high:.1f}ms  o'chdi={low:.1f}ms  |  {hz:.2f}Hz"
+        elif high is not None:
+            text = f"{state}  |  yondi={high:.1f}ms  o'chdi=---"
+        elif low is not None:
+            text = f"{state}  |  yondi=---  o'chdi={low:.1f}ms"
+        else:
+            text = f"{state}  |  kutilmoqda..."
+        self._pul_debug_label.setText(text)
+        self._pul_debug_label.adjustSize()
+        self._pul_debug_label.move(
+            (self.w - self._pul_debug_label.width()) // 2,
+            self.h - self._pul_debug_label.height() - 6,
+        )
+        self._pul_debug_label.raise_()
+
     def _poll_inputs(self):
         # Keep relay outputs latched according to current state every poll cycle.
         self.gpio.refresh_relay_outputs()
 
         if not self._inputs_primed:
             now = time.monotonic()
-            for gpio_line in INPUT_GPIO_TO_SERVICE:
+            for gpio_line, svc_name in INPUT_GPIO_TO_SERVICE.items():
+                if str(svc_name) == "PUL":
+                    continue  # pul_reader thread boshqaradi
                 val = self.gpio.read_input(gpio_line)
                 self._prev_input[gpio_line] = val
                 self._raw_input[gpio_line] = val
@@ -1816,8 +2028,14 @@ class MoykaUI(QWidget):
                 self._inputs_primed = True
             return
 
+        # PUL edge eventlarini queue dan o'qib pul hisoblaymiz
+        self._process_pul_events()
+
         now = time.monotonic()
         for gpio_line, svc_name in INPUT_GPIO_TO_SERVICE.items():
+            if str(svc_name) == "PUL":
+                continue  # pul_reader thread boshqaradi
+
             raw_val = self.gpio.read_input(gpio_line)
             if raw_val != self._raw_input.get(gpio_line, raw_val):
                 self._raw_input[gpio_line] = raw_val
@@ -1832,12 +2050,6 @@ class MoykaUI(QWidget):
                     val = prev
                 else:
                     val = self._raw_input.get(gpio_line, raw_val)
-            elif svc_name == "PUL":
-                last_change = self._raw_input_changed_at.get(gpio_line, now)
-                if (now - last_change) * 1000.0 < self._pul_debounce_ms:
-                    val = prev
-                else:
-                    val = self._raw_input.get(gpio_line, raw_val)
 
             if svc_name == "STOP":
                 if val == 1 and prev == 0:
@@ -1847,9 +2059,6 @@ class MoykaUI(QWidget):
                     self._on_stop_released("gpio")
             elif self.device_locked:
                 pass
-            elif svc_name == "PUL":
-                if val == 0 and prev == 1:
-                    self.add_money(1000)
             elif val == 1 and prev == 0:
                 front_key = self.hw_to_front.get(svc_name, svc_name)
                 btn = self._service_buttons.get(front_key)
@@ -1859,15 +2068,42 @@ class MoykaUI(QWidget):
 
             self._prev_input[gpio_line] = val
 
+    def _delay_relay_cfg(self):
+        cfg = self.cfg.get("delay_relay") if isinstance(self.cfg.get("delay_relay"), dict) else {}
+        svc = str(cfg.get("service") or "").strip()
+        seconds = max(0, int(cfg.get("seconds") or 0))
+        if not svc or svc not in self.cfg.get("services", {}) or seconds <= 0:
+            return None, 0
+        return svc, seconds
+
     def _activate_pin(self, name):
         if not name:
             return
-        self.gpio.set_exclusive_pin(name)
+        self._delay_off_timer.stop()
+        delay_svc, _ = self._delay_relay_cfg()
+        if delay_svc and delay_svc != name:
+            self._delay_relay_on_name = delay_svc
+            self.gpio.set_active_pins(name, delay_svc)
+        else:
+            self._delay_relay_on_name = ""
+            self.gpio.set_exclusive_pin(name)
 
     def _deactivate_pin(self, name):
         if not name:
             return
         self.gpio.set_pin(name, 0)
+        delay_svc, seconds = self._delay_relay_cfg()
+        if delay_svc and delay_svc != name and seconds > 0:
+            # Keep delay relay ON for `seconds` then turn it off.
+            self._delay_relay_on_name = delay_svc
+            self.gpio.set_pin(delay_svc, 1)
+            self._delay_off_timer.start(int(seconds * 1000))
+
+    def _delay_relay_off_now(self):
+        target = self._delay_relay_on_name or ""
+        if target:
+            self.gpio.set_pin(target, 0)
+            self._delay_relay_on_name = ""
 
     def keyPressEvent(self, event):
         if self.device_locked and event.key() in (Qt.Key.Key_Enter, Qt.Key.Key_Return):
@@ -1878,11 +2114,14 @@ class MoykaUI(QWidget):
         super().keyPressEvent(event)
 
     def closeEvent(self, event):
+        self._pul_thread_running = False
         self._game_ready_timer.stop()
         self._game_countdown_timer.stop()
         self._game_tick_timer.stop()
         self._game_end_timer.stop()
         self._game_feedback_timer.stop()
+        self._delay_off_timer.stop()
+        self._money_settle_timer.stop()
         self.gpio.cleanup()
         super().closeEvent(event)
 

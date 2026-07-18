@@ -1,1 +1,26 @@
-[]
+[
+  {
+    "service": "XIZMAT7",
+    "service_name": "XIZMAT7",
+    "earned": 42,
+    "date": "2026-07-03 20:13:22"
+  },
+  {
+    "service": "XIZMAT7",
+    "service_name": "XIZMAT7",
+    "earned": 84,
+    "date": "2026-07-03 20:13:28"
+  },
+  {
+    "service": "PAUSE",
+    "service_name": "PAUZA",
+    "earned": 840,
+    "date": "2026-07-03 20:14:35"
+  },
+  {
+    "service": "XIZMAT5",
+    "service_name": "NANO",
+    "earned": 2564,
+    "date": "2026-07-03 20:15:42"
+  }
+]

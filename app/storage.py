@@ -91,6 +91,12 @@ def load_config():
     if "show_icons" not in data:
         data["show_icons"] = True
 
+    if "delay_relay" not in data or not isinstance(data["delay_relay"], dict):
+        data["delay_relay"] = {"service": "", "seconds": 0}
+    else:
+        data["delay_relay"].setdefault("service", "")
+        data["delay_relay"].setdefault("seconds", 0)
+
     # drop legacy keys
     data.pop("sessions", None)
 

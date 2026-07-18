@@ -370,6 +370,8 @@ class AdminDialog(QDialog):
         self._active_input = None
         self._service_rows = []
         self._show_game_admin_settings = bool(SHOW_GAME_ADMIN_SETTINGS)
+        self._delay_relay_service = ""
+        self._delay_relay_select_mode = False
 
         self.icon_options = []
         # Load default icons from config
@@ -492,6 +494,14 @@ class AdminDialog(QDialog):
             QPushButton#CloseBtn:pressed {
                 background: rgba(120, 120, 128, 0.45);
             }
+            QPushButton#ResetTotalBtn {
+                background: #FF453A;
+                border-radius: 12px;
+                font-size: 22px;
+            }
+            QPushButton#ResetTotalBtn:pressed {
+                background: #D93025;
+            }
             QPushButton#RebootBtn {
                 background: #FF9F0A;
                 border-radius: 14px;
@@ -579,6 +589,14 @@ class AdminDialog(QDialog):
         self.total_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.total_label.setMinimumHeight(chip_height)
         self.total_label.setMaximumHeight(chip_height)
+
+        reset_total_btn = QPushButton("Nollash")
+        reset_total_btn.setObjectName("ResetTotalBtn")
+        reset_total_btn.setMinimumHeight(chip_height)
+        reset_total_btn.setMaximumHeight(chip_height)
+        reset_total_btn.clicked.connect(self._reset_total_earned)
+
+        header.addWidget(reset_total_btn)
         header.addWidget(self.total_label)
 
         root.addLayout(header)
@@ -593,6 +611,8 @@ class AdminDialog(QDialog):
         settings_layout.setVerticalSpacing(12)
 
         self.pin_edit = self._new_text_edit(max_len=6, digits_only=True)
+        self.welcome_edit = self._new_text_edit(max_len=24)
+        self.moyka_name_edit = self._new_text_edit(max_len=24)
         self.show_icons_check = QCheckBox("Iconlar ko'rsatish")
         self.show_icons_check.setObjectName("SwitchCheck")
         self.game_enabled_check = QCheckBox("O'yin rejimi")
@@ -632,6 +652,21 @@ class AdminDialog(QDialog):
             icons_widget = QWidget()
             icons_widget.setLayout(icons_row)
             settings_layout.addWidget(icons_widget, 2, 0, 1, 4)
+
+            self.delay_seconds_edit = self._new_number_edit(0)
+            self._add_labeled_field(settings_layout, 3, 0, "Kechikish (s)", self.delay_seconds_edit)
+            self._register_focus_target(self.delay_seconds_edit, numeric=True)
+
+            self.delay_relay_btn = LongPressButton(
+                "Kechikish relesi: yo'q",
+                on_short_click=self._on_delay_relay_btn_click,
+                on_long_press=self._on_delay_relay_btn_long_press,
+            )
+            self.delay_relay_btn.setMinimumHeight(58)
+            settings_layout.addWidget(self.delay_relay_btn, 3, 1)
+
+            self._add_labeled_field(settings_layout, 3, 2, "Xush kelibsiz matni", self.welcome_edit)
+            self._add_labeled_field(settings_layout, 3, 3, "Moyka nomi", self.moyka_name_edit)
         else:
             icons_row = QHBoxLayout()
             icons_row.setSpacing(12)
@@ -650,6 +685,21 @@ class AdminDialog(QDialog):
             icons_widget = QWidget()
             icons_widget.setLayout(icons_row)
             settings_layout.addWidget(icons_widget, 1, 1, 1, 3)
+
+            self.delay_seconds_edit = self._new_number_edit(0)
+            self._add_labeled_field(settings_layout, 2, 0, "Kechikish (s)", self.delay_seconds_edit)
+            self._register_focus_target(self.delay_seconds_edit, numeric=True)
+
+            self.delay_relay_btn = LongPressButton(
+                "Kechikish relesi: yo'q",
+                on_short_click=self._on_delay_relay_btn_click,
+                on_long_press=self._on_delay_relay_btn_long_press,
+            )
+            self.delay_relay_btn.setMinimumHeight(58)
+            settings_layout.addWidget(self.delay_relay_btn, 2, 1)
+
+            self._add_labeled_field(settings_layout, 2, 2, "Xush kelibsiz matni", self.welcome_edit)
+            self._add_labeled_field(settings_layout, 2, 3, "Moyka nomi", self.moyka_name_edit)
 
         root.addWidget(settings_card)
 
@@ -761,6 +811,8 @@ class AdminDialog(QDialog):
         root.addLayout(footer)
 
         self._register_focus_target(self.pin_edit, pin=True)
+        self._register_focus_target(self.welcome_edit)
+        self._register_focus_target(self.moyka_name_edit)
         self._register_focus_target(self.free_pause_edit, numeric=True)
         self._register_focus_target(self.paid_pause_edit, numeric=True)
         self._register_focus_target(self.bonus_percent_edit, numeric=True)
@@ -874,10 +926,58 @@ class AdminDialog(QDialog):
         widget.installEventFilter(self)
 
     def eventFilter(self, obj, event):
+        if (
+            event.type() == QEvent.Type.MouseButtonPress
+            and self._delay_relay_select_mode
+            and isinstance(obj, QLineEdit)
+            and obj.property("delay_row_key")
+        ):
+            row_key = str(obj.property("delay_row_key") or "")
+            if row_key:
+                self._delay_relay_service = row_key
+                self._exit_delay_select_mode()
+                self._update_delay_relay_btn_label()
+                return True
         if event.type() == QEvent.Type.FocusIn and isinstance(obj, QLineEdit):
             self._active_input = obj
             self._update_keyboard_display()
         return super().eventFilter(obj, event)
+
+    def _on_delay_relay_btn_click(self):
+        if self._delay_relay_select_mode:
+            self._exit_delay_select_mode()
+        else:
+            self._delay_relay_select_mode = True
+        self._update_delay_relay_btn_label()
+
+    def _on_delay_relay_btn_long_press(self):
+        self._delay_relay_service = ""
+        self._exit_delay_select_mode()
+        self._update_delay_relay_btn_label()
+
+    def _exit_delay_select_mode(self):
+        self._delay_relay_select_mode = False
+
+    def _delay_relay_display_name(self):
+        if not self._delay_relay_service:
+            return "yo'q"
+        services_cfg = self.ui_ref.cfg.get("services", {}) if hasattr(self, "ui_ref") else {}
+        svc_cfg = services_cfg.get(self._delay_relay_service, {})
+        return str(svc_cfg.get("display_name") or self._delay_relay_service)
+
+    def _update_delay_relay_btn_label(self):
+        btn = getattr(self, "delay_relay_btn", None)
+        if btn is None:
+            return
+        if self._delay_relay_select_mode:
+            btn.setText("Funksiyani tanlang…")
+            btn.setStyleSheet(
+                "background: #FF9F0A; color: #ffffff; border-radius: 12px;"
+                "padding: 12px 18px; font-size: 22px; font-weight: 700;"
+            )
+        else:
+            btn.setText(f"Kechikish relesi: {self._delay_relay_display_name()}")
+            btn.setStyleSheet("")
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -886,6 +986,8 @@ class AdminDialog(QDialog):
     def _clear_initial_focus(self):
         focus_widgets = [
             self.pin_edit,
+            self.welcome_edit,
+            self.moyka_name_edit,
             self.free_pause_edit,
             self.paid_pause_edit,
             self.bonus_percent_edit,
@@ -909,6 +1011,8 @@ class AdminDialog(QDialog):
         payload = payload or {}
 
         self.pin_edit.setText(str(payload.get("pin") or "1234"))
+        self.welcome_edit.setText(str(payload.get("welcomeText") or payload.get("welcome_text") or "XUSH KELIBSIZ"))
+        self.moyka_name_edit.setText(str(payload.get("moykaName") or payload.get("moyka_name") or "MOYKA"))
         self.show_icons_check.setChecked(bool(payload.get("showIcons", True)))
 
         pause_cfg = payload.get("pause", {}) or {}
@@ -934,6 +1038,15 @@ class AdminDialog(QDialog):
         self.game_enabled_check.setChecked(game_enabled)
         self.game_min_balance_edit.setText(str(game_min_balance))
         self.game_reward_edit.setText(str(game_reward))
+
+        delay_cfg = payload.get("delayRelay") or payload.get("delay_relay") or {}
+        if not isinstance(delay_cfg, dict):
+            delay_cfg = {}
+        self._delay_relay_service = str(delay_cfg.get("service") or "").strip()
+        if hasattr(self, "delay_seconds_edit"):
+            self.delay_seconds_edit.setText(str(_to_int(delay_cfg.get("seconds", 0), 0, 0)))
+        self._delay_relay_select_mode = False
+        self._update_delay_relay_btn_label()
 
         self.total_label.setText(f"Jami: {_format_money(self.ui_ref.cfg.get('total_earned', 0))} so'm")
 
@@ -993,16 +1106,17 @@ class AdminDialog(QDialog):
             self.service_table.insertRow(row_idx)
 
             name_edit = QLineEdit(str(svc.get("label") or svc.get("key") or ""))
-            name_edit.setMinimumHeight(58)
+            name_edit.setMinimumHeight(52)
             name_edit.setFont(app_font(19, bold=True))
             name_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            name_edit.setProperty("delay_row_key", str(svc.get("key") or ""))
             self._register_focus_target(name_edit)
 
             icon_combo = CenteredIconComboBox()
             icon_combo.setObjectName("IconOnlyCombo")
             icon_combo.setMinimumWidth(112)
             icon_combo.setMaximumWidth(112)
-            icon_combo.setMinimumHeight(74)
+            icon_combo.setMinimumHeight(66)
             icon_combo.setFont(app_font(20, bold=True))
             icon_combo.setIconSize(QSize(60, 60))
             icon_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -1034,7 +1148,7 @@ class AdminDialog(QDialog):
             theme_combo.setObjectName("IconOnlyCombo")
             theme_combo.setMinimumWidth(112)
             theme_combo.setMaximumWidth(112)
-            theme_combo.setMinimumHeight(74)
+            theme_combo.setMinimumHeight(66)
             theme_combo.setFont(app_font(20, bold=True))
             theme_combo.setIconSize(QSize(64, 38))
             theme_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -1060,7 +1174,7 @@ class AdminDialog(QDialog):
 
             seconds_edit = QLineEdit(str(_to_int(svc.get("seconds"), 120, 1)))
             seconds_edit.setValidator(QIntValidator(1, 999999))
-            seconds_edit.setMinimumHeight(58)
+            seconds_edit.setMinimumHeight(52)
             seconds_edit.setFont(app_font(21, bold=True))
             seconds_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             self._register_focus_target(seconds_edit, numeric=True)
@@ -1083,7 +1197,7 @@ class AdminDialog(QDialog):
             self.service_table.setCellWidget(row_idx, 3, seconds_edit)
             self.service_table.setCellWidget(row_idx, 4, active_holder)
             self.service_table.setCellWidget(row_idx, 5, available_holder)
-            self.service_table.setRowHeight(row_idx, 112)
+            self.service_table.setRowHeight(row_idx, 100)
 
             self._service_rows.append(
                 {
@@ -1136,6 +1250,10 @@ class AdminDialog(QDialog):
         name = "Matn"
         if target is self.pin_edit:
             name = "PIN"
+        elif target is self.welcome_edit:
+            name = "Xush kelibsiz matni"
+        elif target is self.moyka_name_edit:
+            name = "Moyka nomi"
         elif target is self.free_pause_edit:
             name = "Tekin pauza"
         elif target is self.paid_pause_edit:
@@ -1194,6 +1312,8 @@ class AdminDialog(QDialog):
 
         return {
             "pin": (self.pin_edit.text() or "1234").strip(),
+            "welcomeText": (self.welcome_edit.text() or "").strip() or "XUSH KELIBSIZ",
+            "moykaName": (self.moyka_name_edit.text() or "").strip() or "MOYKA",
             "showIcons": self.show_icons_check.isChecked(),
             "totalButtons": max(1, min(8, len(services))),
             "pause": {
@@ -1209,8 +1329,33 @@ class AdminDialog(QDialog):
                 "minBalance": game_min_balance,
                 "rewardPerCorrect": game_reward,
             },
+            "delayRelay": {
+                "service": str(self._delay_relay_service or ""),
+                "seconds": _to_int(
+                    self.delay_seconds_edit.text() if hasattr(self, "delay_seconds_edit") else 0,
+                    0,
+                    0,
+                ),
+            },
             "services": services,
         }
+
+    def _reset_total_earned(self):
+        msg_box = QMessageBox(
+            QMessageBox.Icon.Question,
+            "Tasdiqlang",
+            "Jami summa 0 ga tushirilsinmi?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            self,
+        )
+        msg_box.setDefaultButton(QMessageBox.StandardButton.No)
+        _center_message_box_on_parent(msg_box, self)
+        if msg_box.exec() != QMessageBox.StandardButton.Yes:
+            return
+
+        self.ui_ref.reset_total_earned()
+        self.total_label.setText(f"Jami: {_format_money(self.ui_ref.cfg.get('total_earned', 0))} so'm")
+        self._set_status("Jami summa nollandi", "#FF9F0A")
 
     def _request_system_action(self, action):
         action = str(action or "").strip().lower()

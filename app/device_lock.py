@@ -253,54 +253,45 @@ def evaluate_device_lock(config_data: dict | None) -> dict:
 
     expected_serial = str(lock_data.get("cpu_serial") or "").strip().lower()
     expected_macs = _normalize_mac_list(lock_data.get("mac_addresses") or [])
-    # if not expected_serial or not expected_macs:
-    #     return {
-    #         "allowed": False,
-    #         "reason": "missing_config",
-    #         "current": current_identity,
-    #     }
+    expected = {
+        "cpu_serial": expected_serial,
+        "mac_addresses": expected_macs,
+    }
 
-    # if not current_serial or not current_macs:
-    #     return {
-    #         "allowed": False,
-    #         "reason": "identity_unavailable",
-    #         "current": current_identity,
-    #         "expected": {
-    #             "cpu_serial": expected_serial,
-    #             "mac_addresses": expected_macs,
-    #         },
-    #     }
+    if not expected_serial and not expected_macs:
+        return {
+            "allowed": False,
+            "reason": "missing_config",
+            "current": current_identity,
+        }
 
-    # if current_serial != expected_serial:
-    #     return {
-    #         "allowed": False,
-    #         "reason": "serial_mismatch",
-    #         "current": current_identity,
-    #         "expected": {
-    #             "cpu_serial": expected_serial,
-    #             "mac_addresses": expected_macs,
-    #         },
-    #     }
+    if not current_serial and not current_macs:
+        return {
+            "allowed": False,
+            "reason": "identity_unavailable",
+            "current": current_identity,
+            "expected": expected,
+        }
 
-    # if set(current_macs) != set(expected_macs):
-    #     return {
-    #         "allowed": False,
-    #         "reason": "mac_mismatch",
-    #         "current": current_identity,
-    #         "expected": {
-    #             "cpu_serial": expected_serial,
-    #             "mac_addresses": expected_macs,
-    #         },
-    #     }
+    # Serial mos kelsa YOKI hech bo'lmasa bitta MAC mos kelsa — shu qurilma.
+    # To'liq ro'yxat tengligi talab qilinmaydi: interfeys qo'shilib/yo'qolib
+    # turishi mumkin, bu noto'g'ri taqiqlanishga olib kelmasin.
+    serial_ok = bool(expected_serial) and current_serial == expected_serial
+    mac_ok = bool(set(current_macs) & set(expected_macs))
+
+    if not serial_ok and not mac_ok:
+        return {
+            "allowed": False,
+            "reason": "identity_mismatch",
+            "current": current_identity,
+            "expected": expected,
+        }
 
     return {
         "allowed": True,
         "reason": "ok",
         "current": current_identity,
-        "expected": {
-            "cpu_serial": expected_serial,
-            "mac_addresses": expected_macs,
-        },
+        "expected": expected,
     }
 
 
@@ -309,7 +300,8 @@ def bind_current_device_to_config(config_data: dict) -> dict:
     cpu_serial = str(identity.get("cpu_serial") or "").strip().lower()
     mac_addresses = _normalize_mac_list(identity.get("mac_addresses") or [])
 
-    if not cpu_serial or not mac_addresses:
+    # Kamida bitta identifikator bo'lsa yetadi (serial yoki MAC).
+    if not cpu_serial and not mac_addresses:
         raise RuntimeError("Device identity is unavailable")
 
     lock_data = {

@@ -18,6 +18,7 @@ DEFAULT_CONFIG = {
         "XIZMAT8": {"display_name": "XIZMAT 8", "price_per_sec": 100, "duration": 120, "relay_bit": 7, "icon": "osmos.png", "theme": "osmos", "active": True, "is_available": True},
     },
     "moyka_name": "MOYKA",
+    "welcome_text": "XUSH KELIBSIZ",
     "admin_pin": "1234",
     "admin_pin_alt": "5678",
     "total_earned": 0,
@@ -25,6 +26,7 @@ DEFAULT_CONFIG = {
     "bonus": {"percent": 0, "threshold": 0},
     "pause": {"freeSeconds": 5, "paidSecondsPer5000": 120},
     "game": {"enabled": False, "minBalance": 10000, "rewardPerCorrect": 500},
+    "delay_relay": {"service": "", "seconds": 0},
     "shift_register": {"data_pin": 227, "clock_pin": 75, "latch_pin": 79, "relay_power_pin": 69},
 }
 

@@ -99,27 +99,30 @@ def _darken_gradient_qss(gradient_qss, amount=0.2):
     return _HEX_COLOR_RE.sub(lambda m: _darken_hex(m.group(0), amount=amount), gradient_qss)
 
 
-def _icon_path(icon_file):
+def _icon_path(icon_file, fallback_to_first=True):
     if not icon_file:
         return ""
-    
+
     # First check in icons/ folder
     path = os.path.join(ICONS_DIR, icon_file)
     if os.path.exists(path):
         return path
-    
+
     # Then check in addicons/ folder
     addicons_dir = os.path.join(os.path.dirname(ICONS_DIR), "addicons")
     path = os.path.join(addicons_dir, icon_file)
     if os.path.exists(path):
         return path
-    
+
+    if not fallback_to_first:
+        return ""
+
     # If icon not found, use first available icon from icons/ folder as fallback
     import glob
     default_icons = glob.glob(os.path.join(ICONS_DIR, "*.png"))
     if default_icons:
         return default_icons[0]
-    
+
     return ""
 
 
@@ -510,7 +513,7 @@ class PauseButton(QFrame):
         self._label_text = "PAUZA"
         self._sub_label_text = ""
         self._mode = "pause"
-        self._stop_icon_path = _icon_path("⛔.png")
+        self._stop_icon_path = _icon_path("⛔.png", fallback_to_first=False)
         self._long_press_timer = QTimer()
         self._long_press_timer.setSingleShot(True)
         self._long_press_timer.timeout.connect(self._on_long_press_timeout)
@@ -535,12 +538,10 @@ class PauseButton(QFrame):
         self.right_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.right_mark.setFixedSize(48, 48)
         
-        # Load stop icon
-        icon_path = self._stop_icon_path
-        if icon_path:
-            pixmap = QPixmap(icon_path).scaled(48, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            self.left_mark.setPixmap(pixmap)
-            self.right_mark.setPixmap(pixmap)
+        # Stop icon: fayl bo'lsa undan, bo'lmasa dastur o'zi chizadi.
+        pixmap = self._stop_pixmap(48)
+        self.left_mark.setPixmap(pixmap)
+        self.right_mark.setPixmap(pixmap)
 
         center = QWidget()
         center_layout = QHBoxLayout(center)
@@ -568,6 +569,42 @@ class PauseButton(QFrame):
 
         self.set_state(False, False, "PAUZA", "")
 
+    def _stop_pixmap(self, size):
+        size = max(16, int(size))
+        if self._stop_icon_path:
+            file_pixmap = QPixmap(self._stop_icon_path)
+            if not file_pixmap.isNull():
+                return file_pixmap.scaled(
+                    size,
+                    size,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+
+        # Fayl topilmasa yoki yuklanmasa, taqiq belgisi qo'lda chiziladi.
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        margin = max(1, size // 12)
+        painter.setPen(QPen(QColor("#ffffff"), max(2, size // 16)))
+        painter.setBrush(QColor("#FF453A"))
+        painter.drawEllipse(margin, margin, size - 2 * margin, size - 2 * margin)
+        bar_h = max(3, size // 6)
+        bar_w = max(6, size - 2 * margin - size // 4)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#ffffff"))
+        painter.drawRoundedRect(
+            (size - bar_w) // 2,
+            (size - bar_h) // 2,
+            bar_w,
+            bar_h,
+            bar_h // 2,
+            bar_h // 2,
+        )
+        painter.end()
+        return pixmap
+
     def set_font_px(self, main_px, sub_px, mark_px):
         self._main_font_px = max(22, int(main_px))
         self._sub_font_px = max(12, int(sub_px))
@@ -575,13 +612,11 @@ class PauseButton(QFrame):
         
         # Keep pause markers at the exact size passed from the service icon sizing logic.
         mark_size = self._mark_font_px
-        icon_path = self._stop_icon_path
-        if icon_path:
-            pixmap = QPixmap(icon_path).scaled(mark_size, mark_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            self.left_mark.setPixmap(pixmap)
-            self.right_mark.setPixmap(pixmap)
-            self.left_mark.setFixedSize(mark_size, mark_size)
-            self.right_mark.setFixedSize(mark_size, mark_size)
+        pixmap = self._stop_pixmap(mark_size)
+        self.left_mark.setPixmap(pixmap)
+        self.right_mark.setPixmap(pixmap)
+        self.left_mark.setFixedSize(mark_size, mark_size)
+        self.right_mark.setFixedSize(mark_size, mark_size)
         
         # Update text labels with dynamic font size
         self.main_text.setFont(app_font(self._main_font_px, bold=True))

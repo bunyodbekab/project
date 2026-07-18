@@ -93,7 +93,7 @@
     "percent": 0,
     "threshold": 0
   },
-  "total_earned": 385331,
+  "total_earned": 388861,
   "pause": {
     "freeSeconds": 50,
     "paidSecondsPer5000": 120
@@ -110,5 +110,9 @@
       "d1:35:1b:10:77:ea"
     ],
     "bound_at": "2026-06-04T18:52:44+00:00"
+  },
+  "delay_relay": {
+    "service": "",
+    "seconds": 0
   }
 }

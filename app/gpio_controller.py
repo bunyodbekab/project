@@ -36,6 +36,8 @@ class GPIOController:
         self.out_states = {}
         self.out_request = None
         self.in_request = None
+        self.pul_request = None
+        self.pul_lines = set()
         self.relay_state = 0
         self._relay_power_enabled = False
         self._gpio_lock = threading.Lock()
@@ -79,9 +81,17 @@ class GPIOController:
             )
 
         in_config = {}
+        pul_config = {}
         for gpio_line, svc_name in INPUT_GPIO_TO_SERVICE.items():
             try:
                 gpio_line = int(gpio_line)
+                if str(svc_name) == "PUL":
+                    pul_config[gpio_line] = gpiod.LineSettings(
+                        direction=gpiod.line.Direction.INPUT,
+                        edge_detection=gpiod.line.Edge.BOTH,
+                    )
+                    self.pul_lines.add(gpio_line)
+                    continue
 
                 line_settings_kwargs = {
                     "direction": gpiod.line.Direction.INPUT,
@@ -110,6 +120,11 @@ class GPIOController:
                 self.in_request = self._request_lines_with_fallback(
                     consumer="moyka_in",
                     config=in_config,
+                )
+            if pul_config:
+                self.pul_request = self._request_lines_with_fallback(
+                    consumer="moyka_pul",
+                    config=pul_config,
                 )
             self._shift_out(self.relay_state)
             self._sync_relay_power()
@@ -265,31 +280,45 @@ class GPIOController:
 
     def set_exclusive_pin(self, name):
         """relay_power OFF → 50ms → eski relay OFF → 20ms → yangi relay ON → 50ms → relay_power ON."""
+        self.set_active_pins(name, None)
+
+    def set_active_pins(self, primary, secondary=None):
+        """Exclusive activation for `primary`, while keeping `secondary` ON in the same cycle."""
+        if secondary == primary:
+            secondary = None
+
         if self.debug:
             if not hasattr(self, "_virtual_state"):
                 self._virtual_state = {}
             for svc in self.relay_map:
-                self._virtual_state[svc] = (svc == name)
-            relay_bit = self.relay_map.get(name)
-            self.relay_state = (1 << relay_bit) if relay_bit is not None else 0
+                self._virtual_state[svc] = svc in (primary, secondary)
+            bits = 0
+            for svc, on in self._virtual_state.items():
+                if not on:
+                    continue
+                bit = self.relay_map.get(svc)
+                if bit is not None:
+                    bits |= (1 << int(bit))
+            self.relay_state = bits
             self._sync_relay_power()
-            self._print_virtual_state(f"exclusive:{name}")
+            self._print_virtual_state(f"active:{primary}+{secondary or '-'}")
             return
 
-        relay_bit = self.out_bits.get(name)
-        if relay_bit is None or not self.out_request:
+        primary_bit = self.out_bits.get(primary)
+        if primary_bit is None or not self.out_request:
             return
+        secondary_bit = self.out_bits.get(secondary) if secondary else None
 
         self._seq_id += 1
         seq_id = self._seq_id
         t = threading.Thread(
             target=self._exclusive_sequence,
-            args=(name, relay_bit, seq_id),
+            args=(primary, primary_bit, secondary, secondary_bit, seq_id),
             daemon=True,
         )
         t.start()
 
-    def _exclusive_sequence(self, name, relay_bit, seq_id):
+    def _exclusive_sequence(self, name, relay_bit, secondary_name, secondary_bit, seq_id):
         self._seq_running = True
         try:
             def alive():
@@ -323,8 +352,10 @@ class GPIOController:
                 if not alive():
                     return
                 new_state = 1 << relay_bit
+                if secondary_bit is not None:
+                    new_state |= (1 << secondary_bit)
                 for svc in self.out_states:
-                    self.out_states[svc] = (svc == name)
+                    self.out_states[svc] = svc in (name, secondary_name)
                 self.relay_state = new_state
                 self._shift_out(new_state)
 
@@ -341,6 +372,27 @@ class GPIOController:
         finally:
             if self._seq_id == seq_id:
                 self._seq_running = False
+
+    def wait_pul_event(self, timeout_ms=100):
+        """PUL edge eventini kutadi. True qaytarsa event bor."""
+        if self.debug or not self.pul_request:
+            return False
+        try:
+            import datetime
+            return bool(self.pul_request.wait_edge_events(
+                datetime.timedelta(milliseconds=timeout_ms)
+            ))
+        except Exception:
+            return False
+
+    def read_pul_events(self):
+        """Mavjud PUL edge eventlarini o'qib qaytaradi."""
+        if self.debug or not self.pul_request:
+            return []
+        try:
+            return self.pul_request.read_edge_events()
+        except Exception:
+            return []
 
     def all_off(self):
         self._seq_id += 1
@@ -368,6 +420,13 @@ class GPIOController:
 
     def cleanup(self):
         self.all_off()
+
+        if self.pul_request:
+            try:
+                self.pul_request.release()
+            except Exception:
+                pass
+            self.pul_request = None
 
         if self.in_request:
             try:
